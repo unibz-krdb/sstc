@@ -106,7 +106,7 @@ class DbContext:
         attributes = []
         for table in self.tables.values():
             attributes.extend(table.attributes)
-        return list(set(attributes))
+        return list(sorted(list(set(attributes)), key=lambda attr: attr.name))
 
     def create_temp_table(self, name: str) -> str:
         result = ""
