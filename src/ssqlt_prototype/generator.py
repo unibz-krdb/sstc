@@ -79,16 +79,15 @@ class Generator:
         result += f"-- loop prevention mechanism\n"
         result += f"CREATE TABLE {self.schema}._LOOP (loop_start INT NOT NULL );\n\n"
 
-        tablenames = self.context.source.ordering + self.context.target.ordering
-
-        for tablename in tablenames:
+        def gen_table_def(tablename: str, source_target: SourceTarget) -> str:
             table = self.insert_tables[tablename]
             name_len = len("-- " + table.schema + "." + tablename + " --")
+            result = ""
             result += "-" * name_len + "\n"
             result += f"-- {table.schema}.{tablename} --\n"
             result += "-" * name_len + "\n\n"
             result += f"-- insert function\n"
-            result += table.generate_function() + "\n\n"
+            result += table.generate_function(source_target=source_target) + "\n\n"
             result += f"-- insert trigger\n"
             result += table.generate_trigger() + "\n\n"
 
@@ -97,6 +96,14 @@ class Generator:
             result += table.generate_insert_function() + "\n\n"
             result += f"-- insert join trigger\n"
             result += table.generate_insert_trigger() + "\n"
+
+            return result
+
+        for tablename in self.context.source.ordering:
+            result += gen_table_def(tablename, SourceTarget.SOURCE)
+
+        for tablename in self.context.target.ordering:
+            result += gen_table_def(tablename, SourceTarget.TARGET)
 
         result += "\n"
 

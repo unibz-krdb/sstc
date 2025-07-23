@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from .enums import SourceTarget
 from .table import Table
 
 
@@ -20,21 +21,21 @@ class InsertTable:
         sql += "WHERE 1<>1;"
         return sql
 
-    def generate_function(self) -> str:
+    def generate_function(self, source_target: SourceTarget) -> str:
+        match source_target:
+            case SourceTarget.SOURCE:
+                loop_val = -1
+            case SourceTarget.TARGET:
+                loop_val = 1
         function_name = f"{self.source.schema}.{self.table}_fn"
-        attributestr = ", ".join(
-            f"new.{attr.name}" for attr in self.source.attributes
-        )
+        attributestr = ", ".join(f"new.{attr.name}" for attr in self.source.attributes)
         sql = f"""CREATE OR REPLACE FUNCTION {function_name}()
    RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
    BEGIN
    RAISE NOTICE 'Function {function_name} called';
-   IF EXISTS (SELECT * FROM {self.source.schema}._loop) THEN
-      DELETE FROM {self.source.schema}._loop;
-      DELETE FROM {self.source.schema}.{self.table};
+   IF EXISTS (SELECT * FROM {self.source.schema}._loop where loop_start = {loop_val}) THEN
       RETURN NULL;
    ELSE
-      INSERT INTO {self.source.schema}._loop VALUES (-1);
       INSERT INTO {self.source.schema}.{self.table} VALUES({attributestr});
       RETURN NEW;
    END IF;
