@@ -75,6 +75,51 @@ SELECT * FROM transducer._empdep
 WHERE 1<>1;
 
 -- constraint 1 of 3
+CREATE OR REPLACE FUNCTION transducer._empdep_mvd_1_insert_fn()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+   IF EXISTS (SELECT DISTINCT r1.ssn, r2.name, r1.phone, r1.email, r2.dep_name, r2.dep_address 
+         FROM transducer._EMPDEP AS r1,
+         (SELECT NEW.ssn, NEW.name, NEW.phone, NEW.email, NEW.dep_name, NEW.dep_address) AS r2
+            WHERE  r1.ssn = r2.ssn 
+         EXCEPT
+         SELECT *
+         FROM transducer._EMPDEP
+         ) THEN
+      RAISE EXCEPTION 'THIS ADDED VALUES VIOLATE THE MVD CONSTRAINT ON PHONE %', NEW;
+      RETURN NULL;
+   ELSE
+      RETURN NEW;
+   END IF;
+END;
+$$;
+CREATE TRIGGER transducer__empdep_mvd_1_insert_trigger
+BEFORE INSERT ON transducer._empdep
+FOR EACH ROW
+EXECUTE FUNCTION transducer._empdep_mvd_1_insert_fn();
+
+-- constraint 2 of 3
+CREATE OR REPLACE FUNCTION transducer._empdep_fd_1_insert_fn()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+   IF EXISTS (SELECT * 
+         FROM transducer._EMPDEP AS r1,
+         (SELECT NEW.ssn, NEW.name, NEW.phone, NEW.email, NEW.dep_name,NEW.dep_address) AS r2
+            WHERE  r1.dep_name = r2.dep_name 
+         AND r1.dep_address<> r2.dep_address) THEN
+      RAISE EXCEPTION 'THIS ADDED VALUES VIOLATE THE FD CONSTRAINT IN EMPDEP';
+      RETURN NULL;
+   ELSE
+      RETURN NEW;
+   END IF;
+END;
+$$;
+CREATE TRIGGER transducer__empdep_fd_1_insert_trigger
+BEFORE INSERT ON transducer._empdep
+FOR EACH ROW
+EXECUTE FUNCTION transducer._empdep_fd_1_insert_fn();
+
+-- constraint 3 of 3
 CREATE OR REPLACE FUNCTION transducer._empdep_mvd_2_insert_fn()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 BEGIN
@@ -105,54 +150,9 @@ BEGIN
 END;
 $$;
 CREATE TRIGGER transducer__empdep_mvd_2_insert_trigger
-BEFORE INSERT ON transducer._empdep
+AFTER INSERT ON transducer._empdep
 FOR EACH ROW
 EXECUTE FUNCTION transducer._empdep_mvd_2_insert_fn();
-
--- constraint 2 of 3
-CREATE OR REPLACE FUNCTION transducer._empdep_mvd_1_insert_fn()
-RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-BEGIN
-   IF EXISTS (SELECT DISTINCT r1.ssn, r2.name, r1.phone, r1.email, r2.dep_name, r2.dep_address 
-         FROM transducer._EMPDEP AS r1,
-         (SELECT NEW.ssn, NEW.name, NEW.phone, NEW.email, NEW.dep_name, NEW.dep_address) AS r2
-            WHERE  r1.ssn = r2.ssn 
-         EXCEPT
-         SELECT *
-         FROM transducer._EMPDEP
-         ) THEN
-      RAISE EXCEPTION 'THIS ADDED VALUES VIOLATE THE MVD CONSTRAINT ON PHONE %', NEW;
-      RETURN NULL;
-   ELSE
-      RETURN NEW;
-   END IF;
-END;
-$$;
-CREATE TRIGGER transducer__empdep_mvd_1_insert_trigger
-BEFORE INSERT ON transducer._empdep
-FOR EACH ROW
-EXECUTE FUNCTION transducer._empdep_mvd_1_insert_fn();
-
--- constraint 3 of 3
-CREATE OR REPLACE FUNCTION transducer._empdep_fd_1_insert_fn()
-RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-BEGIN
-   IF EXISTS (SELECT * 
-         FROM transducer._EMPDEP AS r1,
-         (SELECT NEW.ssn, NEW.name, NEW.phone, NEW.email, NEW.dep_name,NEW.dep_address) AS r2
-            WHERE  r1.dep_name = r2.dep_name 
-         AND r1.dep_address<> r2.dep_address) THEN
-      RAISE EXCEPTION 'THIS ADDED VALUES VIOLATE THE FD CONSTRAINT IN EMPDEP';
-      RETURN NULL;
-   ELSE
-      RETURN NEW;
-   END IF;
-END;
-$$;
-CREATE TRIGGER transducer__empdep_fd_1_insert_trigger
-BEFORE INSERT ON transducer._empdep
-FOR EACH ROW
-EXECUTE FUNCTION transducer._empdep_fd_1_insert_fn();
 
 /****************************/
 /* TARGET TABLE DEFINITIONS */
@@ -339,16 +339,16 @@ BEGIN
 RAISE NOTICE 'Function transducer._position_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	dep_address VARCHAR(100),
-	email VARCHAR(100),
 	city VARCHAR(100),
+	country VARCHAR(100),
+	dep_address VARCHAR(100),
 	dep_name VARCHAR(100),
+	email VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	country VARCHAR(100),
 	ssn VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT dep_address, city, country
+INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
 FROM transducer._POSITION_INSERT
 NATURAL LEFT OUTER JOIN transducer._EMPDEP
 );
@@ -399,17 +399,17 @@ BEGIN
 RAISE NOTICE 'Function transducer._empdep_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	dep_address VARCHAR(100),
-	email VARCHAR(100),
 	city VARCHAR(100),
+	country VARCHAR(100),
+	dep_address VARCHAR(100),
 	dep_name VARCHAR(100),
+	email VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	country VARCHAR(100),
 	ssn VARCHAR(100)
 );
 INSERT INTO temp_table (-- TODO: Maybe all select distinct
-SELECT ssn, name, phone, email, dep_name, dep_address
+SELECT city, country, dep_address, dep_name, email, name, phone, ssn
 FROM transducer._EMPDEP_INSERT
 NATURAL LEFT OUTER JOIN transducer._POSITION
 
@@ -461,16 +461,16 @@ BEGIN
 RAISE NOTICE 'Function transducer._city_country_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	dep_address VARCHAR(100),
-	email VARCHAR(100),
 	city VARCHAR(100),
+	country VARCHAR(100),
+	dep_address VARCHAR(100),
 	dep_name VARCHAR(100),
+	email VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	country VARCHAR(100),
 	ssn VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT city, country
+INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
 FROM transducer._CITY_COUNTRY_INSERT
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_CITY
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT
@@ -529,16 +529,16 @@ BEGIN
 RAISE NOTICE 'Function transducer._department_city_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	dep_address VARCHAR(100),
-	email VARCHAR(100),
 	city VARCHAR(100),
+	country VARCHAR(100),
+	dep_address VARCHAR(100),
 	dep_name VARCHAR(100),
+	email VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	country VARCHAR(100),
 	ssn VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT dep_address, city
+INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
 FROM transducer._DEPARTMENT_CITY_INSERT
    NATURAL LEFT OUTER JOIN transducer._CITY_COUNTRY
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT
@@ -597,16 +597,16 @@ BEGIN
 RAISE NOTICE 'Function transducer._department_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	dep_address VARCHAR(100),
-	email VARCHAR(100),
 	city VARCHAR(100),
+	country VARCHAR(100),
+	dep_address VARCHAR(100),
 	dep_name VARCHAR(100),
+	email VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	country VARCHAR(100),
 	ssn VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT dep_name, dep_address
+INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
 FROM transducer._DEPARTMENT_INSERT
    NATURAL LEFT OUTER JOIN transducer._PERSON
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE
@@ -665,16 +665,16 @@ BEGIN
 RAISE NOTICE 'Function transducer._person_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	dep_address VARCHAR(100),
-	email VARCHAR(100),
 	city VARCHAR(100),
+	country VARCHAR(100),
+	dep_address VARCHAR(100),
 	dep_name VARCHAR(100),
+	email VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	country VARCHAR(100),
 	ssn VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT ssn, name, dep_name
+INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
    FROM transducer._PERSON_INSERT
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL
@@ -733,16 +733,16 @@ BEGIN
 RAISE NOTICE 'Function transducer._person_email_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	dep_address VARCHAR(100),
-	email VARCHAR(100),
 	city VARCHAR(100),
+	country VARCHAR(100),
+	dep_address VARCHAR(100),
 	dep_name VARCHAR(100),
+	email VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	country VARCHAR(100),
 	ssn VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT ssn, email
+INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
 FROM transducer._PERSON_EMAIL_INSERT
    NATURAL LEFT OUTER JOIN transducer._PERSON
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE
@@ -801,16 +801,16 @@ BEGIN
 RAISE NOTICE 'Function transducer._person_phone_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	dep_address VARCHAR(100),
-	email VARCHAR(100),
 	city VARCHAR(100),
+	country VARCHAR(100),
+	dep_address VARCHAR(100),
 	dep_name VARCHAR(100),
+	email VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	country VARCHAR(100),
 	ssn VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT ssn, phone
+INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
 FROM transducer._PERSON_PHONE_INSERT
    NATURAL LEFT OUTER JOIN transducer._PERSON
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL
@@ -868,17 +868,17 @@ ELSE
    RAISE NOTICE 'This should conclude with an INSERT on _EMPDEP';
         
 create temporary table temp_table_join (
-	dep_address VARCHAR(100),
-	email VARCHAR(100),
 	city VARCHAR(100),
+	country VARCHAR(100),
+	dep_address VARCHAR(100),
 	dep_name VARCHAR(100),
+	email VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	country VARCHAR(100),
 	ssn VARCHAR(100)
 );
 
-INSERT INTO temp_table_join(SELECT DISTINCT dep_address, email, city, dep_name, name, phone, country, ssn
+INSERT INTO temp_table_join(SELECT DISTINCT city, country, dep_address, dep_name, email, name, phone, ssn
 FROM transducer._CITY_COUNTRY_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_CITY_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_INSERT_JOIN
@@ -886,13 +886,13 @@ FROM transducer._CITY_COUNTRY_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL_INSERT_JOIN
 
- where dep_address IS NOT NULL
- AND email IS NOT NULL
- AND city IS NOT NULL
+ where city IS NOT NULL
+ AND country IS NOT NULL
+ AND dep_address IS NOT NULL
  AND dep_name IS NOT NULL
+ AND email IS NOT NULL
  AND name IS NOT NULL
  AND phone IS NOT NULL
- AND country IS NOT NULL
  AND ssn IS NOT NULL
  );
 
