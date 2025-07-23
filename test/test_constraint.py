@@ -6,7 +6,7 @@ from ssqlt_prototype import Constraint
 
 def test_from_file(input_dir):
     file_path = os.path.join(
-        input_dir, "source", "constraints", "transducer._empdep.fd.1.insert.sql"
+        input_dir, "source", "constraints", "transducer._empdep.fd.1.before.insert.sql"
     )
     constraint = Constraint.from_file(file_path)
     assert constraint.schema == "transducer"
@@ -14,5 +14,6 @@ def test_from_file(input_dir):
     assert constraint.type_ == "fd"
     assert constraint.index == 1
     assert constraint.insert_delete == Constraint.InsertDelete.INSERT
+    assert constraint.before_after == Constraint.BeforeAfter.BEFORE
     with open(file_path, "r") as f:
         assert constraint.generate_function() == f.read().strip()
