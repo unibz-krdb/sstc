@@ -62,7 +62,8 @@ RAISE NOTICE 'Function {self.create_table.schema}.{tablename}_FN called';
 
         to_sql = self.create_table.mapping_sql(
             primary_suffix=suffix,
-            custom_attributes=self.context.all_attributes()
+            attributes=self.context.all_attributes(),
+            non_null_attributes=self.context.all_attributes()
         )
         sql += f"\nINSERT INTO temp_table ({to_sql});\n"
 

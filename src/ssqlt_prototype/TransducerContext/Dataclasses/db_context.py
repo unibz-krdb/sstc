@@ -111,6 +111,15 @@ class DbContext:
                     attributes.append(attr)
         return attributes
 
+    def all_pkey_attributes(self) -> list[Attr]:
+        attributes = []
+        for tablename in reversed(self.ordering):
+            table = self.tables[tablename]
+            for attr in table.pkey[0].attrs:
+                if attr not in attributes:
+                    attributes.append(attr)
+        return attributes
+
     def create_temp_table(self, name: str) -> str:
         result = ""
         all_attributes = self.all_attributes()

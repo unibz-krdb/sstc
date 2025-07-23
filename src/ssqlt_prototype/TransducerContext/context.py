@@ -8,12 +8,10 @@ from .Dataclasses.db_context import DbContext
 
 @dataclass
 class Context:
-
     source: DbContext
     target: DbContext
 
     def __init__(self, context_files: ContextFilePaths) -> None:
-
         self.source = DbContext.from_files(
             create_paths=context_files.source_creates,
             constraint_paths=context_files.source_constraints,
@@ -38,7 +36,7 @@ AFTER INSERT ON {self.target.schema}.{tablename}
 FOR EACH ROW
 EXECUTE FUNCTION {self.target.schema}.target_insert_fn();
 """.strip()
-        
+
     def generate_source_insert_trigger(self, tablename: str) -> str:
         return f"""
 CREATE TRIGGER source_insert_{tablename}_trigger
@@ -82,18 +80,12 @@ ELSE
         full_mapping_tablename = target_orderings[0]
         table = self.target.tables[full_mapping_tablename]
         full_mapping = table.mapping_sql(
-            custom_attributes=self.target.all_attributes(),
+            attributes=self.target.all_attributes(),
             primary_suffix="_INSERT_JOIN",
             secondary_suffix="_INSERT_JOIN",
+            non_null_attributes=self.target.all_attributes()
         )
-        result += f"\n\nINSERT INTO {temp_tablename}("
-        result += full_mapping
-        result += "\n where "
-        result += "\n AND ".join(
-            map(lambda x: x.name + " IS NOT NULL", self.target.all_attributes())
-        )
-        result += "\n "
-        result += ");"
+        result += f"\n\nINSERT INTO {temp_tablename}({full_mapping});"
 
         # Other inserts
 
@@ -138,7 +130,6 @@ END;    $$;
         return result.strip()
 
     def generate_source_insert(self):
-
         schema = "transducer"  # TODO Hardcoded
 
         result = f"""
@@ -157,11 +148,22 @@ ELSE
 
         def get_insert(target: str):
             table = self.target.tables[target]
-            mapping_str = "(" + full_join_table.mapping_sql(custom_attributes=table.attributes, primary_suffix="_INSERT_JOIN", secondary_suffix="_INSERT_JOIN", where=True) + ")"
+            mapping_str = (
+                "("
+                + full_join_table.mapping_sql(
+                    attributes=table.attributes,
+                    primary_suffix="_INSERT_JOIN",
+                    secondary_suffix="_INSERT_JOIN",
+                    non_null_attributes=self.source.all_pkey_attributes(),
+                )
+                + ")"
+            )
 
             result = f"\n\tINSERT INTO {schema}.{target} "
             result += "" + mapping_str + ""
-            result += " ON CONFLICT (" + ",".join(table.pkey[0].columns) + ") DO NOTHING;"
+            result += (
+                " ON CONFLICT (" + ",".join(table.pkey[0].columns) + ") DO NOTHING;"
+            )
             return result
 
         for target in self.target.ordering:

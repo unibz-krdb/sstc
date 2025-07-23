@@ -24,17 +24,21 @@ class Attr:
 
 @dataclass
 class PK:
-    columns: list[str]
+    attrs: list[Attr]
+
+    @property
+    def columns(self) -> list[str]:
+        return [col.name for col in self.attrs]
 
     @classmethod
-    def from_dict(cls, pk: dict):
+    def from_dict(cls, pk: dict, attrs: dict[str, Attr]):
         if isinstance(pk["columns"], list):
-            columns = [col.lower() for col in pk["columns"]]
+            columns = [attrs[col.lower()] for col in pk["columns"]]
         elif isinstance(pk["columns"], str):
-            columns = [pk["columns"].lower()]
+            columns = [attrs[pk["columns"].lower()]]
         else:
             raise ValueError("Primary key columns must be a list or a string")
-        return cls(columns=columns)
+        return cls(attrs=columns)
 
 
 @dataclass
@@ -130,6 +134,8 @@ class Table:
 
         attrs = list(map(Attr.from_dict, statement["columns"]))
 
+        attrs_dict = {attr.name: attr for attr in attrs}
+
         constraints = statement.get("constraint", [])
         if isinstance(constraints, dict):
             constraints = [constraints]
@@ -137,7 +143,7 @@ class Table:
         fkeys = []
         for constraint in constraints:
             if "primary_key" in constraint:
-                pkeys.append(PK.from_dict(constraint["primary_key"]))
+                pkeys.append(PK.from_dict(constraint["primary_key"], attrs_dict))
             elif "foreign_key" in constraint:
                 fkeys.append(FK.from_dict(constraint["foreign_key"]))
             else:
@@ -154,29 +160,31 @@ class Table:
 
     def mapping_sql(
         self,
-        custom_attributes: list[Attr] | None = None,
+        attributes: list[Attr],
         primary_suffix: str = "",
         secondary_suffix: str = "",
-        where: bool = False
+        non_null_attributes: list[Attr] = []
     ) -> str:
         """
         Returns the SQL for the mapping of this table.
         """
-        if custom_attributes is None:
-            custom_attributes = self.attributes
 
-        attr_str = ", ".join(
-            f"{attr.name}" for attr in custom_attributes
-        )
+        placeholder_vals = {
+            "primary_suffix": primary_suffix,
+            "secondary_suffix": secondary_suffix,
+            "attributes": ", ".join(attr.name for attr in attributes),
+            "where": ""
+        }
 
-        if not where:
-            return self.mapping.render(
-                attributes=attr_str, primary_suffix=primary_suffix, secondary_suffix=secondary_suffix, where=""
+        if len(non_null_attributes) > 0:
+            not_null_str = " AND ".join(
+                f"{attr.name} IS NOT NULL" for attr in non_null_attributes
             )
+            placeholder_vals["where"] = f"WHERE {not_null_str}"
         else:
-            return self.mapping.render(
-                attributes=attr_str, primary_suffix=primary_suffix, secondary_suffix=secondary_suffix
-            )
+            placeholder_vals["where"] = ""
+
+        return self.mapping.render(placeholder_vals)
 
     def from_full_join(self, tablename: str, schema: str | None = None):
         if schema is not None:
