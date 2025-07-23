@@ -104,9 +104,12 @@ class DbContext:
 
     def all_attributes(self) -> list[Attr]:
         attributes = []
-        for table in self.tables.values():
-            attributes.extend(table.attributes)
-        return list(sorted(list(set(attributes)), key=lambda attr: attr.name))
+        for tablename in reversed(self.ordering):
+            table = self.tables[tablename]
+            for attr in table.attributes:
+                if attr not in attributes:
+                    attributes.append(attr)
+        return attributes
 
     def create_temp_table(self, name: str) -> str:
         result = ""
