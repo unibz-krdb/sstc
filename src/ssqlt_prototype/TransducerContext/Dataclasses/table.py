@@ -154,9 +154,6 @@ class Table:
 
     def mapping_sql(
         self,
-        select_preamble: (
-            Literal["SELECT"] | Literal["SELECT DISTINCT"] | Literal[""]
-        ) = "",
         custom_attributes: list[Attr] | None = None,
         primary_suffix: str = "",
         secondary_suffix: str = "",
@@ -174,11 +171,11 @@ class Table:
 
         if not where:
             return self.mapping.render(
-                select_preamble=select_preamble, attributes=attr_str, primary_suffix=primary_suffix, secondary_suffix=secondary_suffix, where=""
+                attributes=attr_str, primary_suffix=primary_suffix, secondary_suffix=secondary_suffix, where=""
             )
         else:
             return self.mapping.render(
-                select_preamble=select_preamble, attributes=attr_str, primary_suffix=primary_suffix, secondary_suffix=secondary_suffix
+                attributes=attr_str, primary_suffix=primary_suffix, secondary_suffix=secondary_suffix
             )
 
     def from_full_join(self, tablename: str, schema: str | None = None):

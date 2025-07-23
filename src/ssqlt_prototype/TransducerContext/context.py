@@ -85,7 +85,6 @@ ELSE
             custom_attributes=self.target.all_attributes(),
             primary_suffix="_INSERT_JOIN",
             secondary_suffix="_INSERT_JOIN",
-            select_preamble="SELECT DISTINCT",
         )
         result += f"\n\nINSERT INTO {temp_tablename}("
         result += full_mapping
@@ -158,7 +157,7 @@ ELSE
 
         def get_insert(target: str):
             table = self.target.tables[target]
-            mapping_str = "(" + full_join_table.mapping_sql(select_preamble="SELECT DISTINCT", custom_attributes=table.attributes, primary_suffix="_INSERT_JOIN", secondary_suffix="_INSERT_JOIN", where=True) + ")"
+            mapping_str = "(" + full_join_table.mapping_sql(custom_attributes=table.attributes, primary_suffix="_INSERT_JOIN", secondary_suffix="_INSERT_JOIN", where=True) + ")"
 
             result = f"\n\tINSERT INTO {schema}.{target} "
             result += "" + mapping_str + ""

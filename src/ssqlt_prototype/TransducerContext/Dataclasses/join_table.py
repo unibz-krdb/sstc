@@ -61,7 +61,6 @@ RAISE NOTICE 'Function {self.create_table.schema}.{tablename}_FN called';
         sql += self.context.create_temp_table("temp_table")
 
         to_sql = self.create_table.mapping_sql(
-            select_preamble="SELECT",
             primary_suffix=suffix,
             custom_attributes=self.context.all_attributes()
         )

@@ -1,4 +1,4 @@
-   {{ select_preamble }} {{ attributes }}
+   SELECT DISTINCT {{ attributes }}
    FROM transducer._PERSON{{ primary_suffix }}
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL

@@ -1,4 +1,4 @@
-{{ select_preamble }} {{ attributes }}
+SELECT DISTINCT {{ attributes }}
 FROM transducer._DEPARTMENT_CITY{{ primary_suffix }}
    NATURAL LEFT OUTER JOIN transducer._CITY_COUNTRY
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT
