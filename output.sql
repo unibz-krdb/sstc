@@ -339,19 +339,19 @@ BEGIN
 RAISE NOTICE 'Function transducer._position_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	city VARCHAR(100),
-	country VARCHAR(100),
-	dep_address VARCHAR(100),
-	dep_name VARCHAR(100),
-	email VARCHAR(100),
+	ssn VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	ssn VARCHAR(100)
+	email VARCHAR(100),
+	dep_name VARCHAR(100),
+	dep_address VARCHAR(100),
+	city VARCHAR(100),
+	country VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
+INSERT INTO temp_table (SELECT DISTINCT ssn, name, phone, email, dep_name, dep_address, city, country
 FROM transducer._POSITION_INSERT
 NATURAL LEFT OUTER JOIN transducer._EMPDEP
-);
+WHERE ssn IS NOT NULL AND name IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._empdep_INSERT_JOIN (SELECT ssn, name, phone, email, dep_name, dep_address FROM temp_table);
 INSERT INTO transducer._LOOP VALUES (1);
@@ -399,21 +399,19 @@ BEGIN
 RAISE NOTICE 'Function transducer._empdep_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	city VARCHAR(100),
-	country VARCHAR(100),
-	dep_address VARCHAR(100),
-	dep_name VARCHAR(100),
-	email VARCHAR(100),
+	ssn VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	ssn VARCHAR(100)
+	email VARCHAR(100),
+	dep_name VARCHAR(100),
+	dep_address VARCHAR(100),
+	city VARCHAR(100),
+	country VARCHAR(100)
 );
-INSERT INTO temp_table (-- TODO: Maybe all select distinct
-SELECT city, country, dep_address, dep_name, email, name, phone, ssn
+INSERT INTO temp_table (SELECT DISTINCT ssn, name, phone, email, dep_name, dep_address, city, country
 FROM transducer._EMPDEP_INSERT
 NATURAL LEFT OUTER JOIN transducer._POSITION
-
--- TODO: Programatically generate the where is not null with primary keys from all join tables);
+WHERE ssn IS NOT NULL AND name IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._empdep_INSERT_JOIN (SELECT ssn, name, phone, email, dep_name, dep_address FROM temp_table);
 INSERT INTO transducer._LOOP VALUES (1);
@@ -461,23 +459,23 @@ BEGIN
 RAISE NOTICE 'Function transducer._city_country_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	city VARCHAR(100),
-	country VARCHAR(100),
-	dep_address VARCHAR(100),
-	dep_name VARCHAR(100),
+	ssn VARCHAR(100),
+	phone VARCHAR(100),
 	email VARCHAR(100),
 	name VARCHAR(100),
-	phone VARCHAR(100),
-	ssn VARCHAR(100)
+	dep_name VARCHAR(100),
+	dep_address VARCHAR(100),
+	city VARCHAR(100),
+	country VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
+INSERT INTO temp_table (SELECT DISTINCT ssn, phone, email, name, dep_name, dep_address, city, country
 FROM transducer._CITY_COUNTRY_INSERT
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_CITY
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT
    NATURAL LEFT OUTER JOIN transducer._PERSON
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL
-);
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND name IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._person_phone_INSERT_JOIN (SELECT ssn, phone FROM temp_table);
 INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_table);
@@ -529,23 +527,23 @@ BEGIN
 RAISE NOTICE 'Function transducer._department_city_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	city VARCHAR(100),
-	country VARCHAR(100),
-	dep_address VARCHAR(100),
-	dep_name VARCHAR(100),
+	ssn VARCHAR(100),
+	phone VARCHAR(100),
 	email VARCHAR(100),
 	name VARCHAR(100),
-	phone VARCHAR(100),
-	ssn VARCHAR(100)
+	dep_name VARCHAR(100),
+	dep_address VARCHAR(100),
+	city VARCHAR(100),
+	country VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
+INSERT INTO temp_table (SELECT DISTINCT ssn, phone, email, name, dep_name, dep_address, city, country
 FROM transducer._DEPARTMENT_CITY_INSERT
    NATURAL LEFT OUTER JOIN transducer._CITY_COUNTRY
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT
    NATURAL LEFT OUTER JOIN transducer._PERSON
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL
-);
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND name IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._person_phone_INSERT_JOIN (SELECT ssn, phone FROM temp_table);
 INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_table);
@@ -597,23 +595,23 @@ BEGIN
 RAISE NOTICE 'Function transducer._department_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	city VARCHAR(100),
-	country VARCHAR(100),
-	dep_address VARCHAR(100),
-	dep_name VARCHAR(100),
+	ssn VARCHAR(100),
+	phone VARCHAR(100),
 	email VARCHAR(100),
 	name VARCHAR(100),
-	phone VARCHAR(100),
-	ssn VARCHAR(100)
+	dep_name VARCHAR(100),
+	dep_address VARCHAR(100),
+	city VARCHAR(100),
+	country VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
+INSERT INTO temp_table (SELECT DISTINCT ssn, phone, email, name, dep_name, dep_address, city, country
 FROM transducer._DEPARTMENT_INSERT
    NATURAL LEFT OUTER JOIN transducer._PERSON
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_CITY
    NATURAL LEFT OUTER JOIN transducer._CITY_COUNTRY
-);
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND name IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._person_phone_INSERT_JOIN (SELECT ssn, phone FROM temp_table);
 INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_table);
@@ -665,23 +663,23 @@ BEGIN
 RAISE NOTICE 'Function transducer._person_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	city VARCHAR(100),
-	country VARCHAR(100),
-	dep_address VARCHAR(100),
-	dep_name VARCHAR(100),
+	ssn VARCHAR(100),
+	phone VARCHAR(100),
 	email VARCHAR(100),
 	name VARCHAR(100),
-	phone VARCHAR(100),
-	ssn VARCHAR(100)
+	dep_name VARCHAR(100),
+	dep_address VARCHAR(100),
+	city VARCHAR(100),
+	country VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
+INSERT INTO temp_table (SELECT DISTINCT ssn, phone, email, name, dep_name, dep_address, city, country
    FROM transducer._PERSON_INSERT
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_CITY
    NATURAL LEFT OUTER JOIN transducer._CITY_COUNTRY
-);
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND name IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._person_phone_INSERT_JOIN (SELECT ssn, phone FROM temp_table);
 INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_table);
@@ -733,23 +731,23 @@ BEGIN
 RAISE NOTICE 'Function transducer._person_email_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	city VARCHAR(100),
-	country VARCHAR(100),
-	dep_address VARCHAR(100),
-	dep_name VARCHAR(100),
+	ssn VARCHAR(100),
+	phone VARCHAR(100),
 	email VARCHAR(100),
 	name VARCHAR(100),
-	phone VARCHAR(100),
-	ssn VARCHAR(100)
+	dep_name VARCHAR(100),
+	dep_address VARCHAR(100),
+	city VARCHAR(100),
+	country VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
+INSERT INTO temp_table (SELECT DISTINCT ssn, phone, email, name, dep_name, dep_address, city, country
 FROM transducer._PERSON_EMAIL_INSERT
    NATURAL LEFT OUTER JOIN transducer._PERSON
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_CITY
    NATURAL LEFT OUTER JOIN transducer._CITY_COUNTRY
-);
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND name IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._person_phone_INSERT_JOIN (SELECT ssn, phone FROM temp_table);
 INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_table);
@@ -801,23 +799,23 @@ BEGIN
 RAISE NOTICE 'Function transducer._person_phone_INSERT_JOIN_FN called';
 
 create temporary table temp_table (
-	city VARCHAR(100),
-	country VARCHAR(100),
-	dep_address VARCHAR(100),
-	dep_name VARCHAR(100),
+	ssn VARCHAR(100),
+	phone VARCHAR(100),
 	email VARCHAR(100),
 	name VARCHAR(100),
-	phone VARCHAR(100),
-	ssn VARCHAR(100)
+	dep_name VARCHAR(100),
+	dep_address VARCHAR(100),
+	city VARCHAR(100),
+	country VARCHAR(100)
 );
-INSERT INTO temp_table (SELECT city, country, dep_address, dep_name, email, name, phone, ssn
+INSERT INTO temp_table (SELECT DISTINCT ssn, phone, email, name, dep_name, dep_address, city, country
 FROM transducer._PERSON_PHONE_INSERT
    NATURAL LEFT OUTER JOIN transducer._PERSON
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_CITY
    NATURAL LEFT OUTER JOIN transducer._CITY_COUNTRY
-);
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND name IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._person_phone_INSERT_JOIN (SELECT ssn, phone FROM temp_table);
 INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_table);
@@ -868,33 +866,24 @@ ELSE
    RAISE NOTICE 'This should conclude with an INSERT on _EMPDEP';
         
 create temporary table temp_table_join (
-	city VARCHAR(100),
-	country VARCHAR(100),
-	dep_address VARCHAR(100),
-	dep_name VARCHAR(100),
-	email VARCHAR(100),
+	ssn VARCHAR(100),
 	name VARCHAR(100),
 	phone VARCHAR(100),
-	ssn VARCHAR(100)
+	email VARCHAR(100),
+	dep_name VARCHAR(100),
+	dep_address VARCHAR(100),
+	city VARCHAR(100),
+	country VARCHAR(100)
 );
 
-INSERT INTO temp_table_join(SELECT DISTINCT city, country, dep_address, dep_name, email, name, phone, ssn
+INSERT INTO temp_table_join(SELECT DISTINCT ssn, phone, email, name, dep_name, dep_address, city, country
 FROM transducer._CITY_COUNTRY_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_CITY_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PERSON_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL_INSERT_JOIN
-
- where city IS NOT NULL
- AND country IS NOT NULL
- AND dep_address IS NOT NULL
- AND dep_name IS NOT NULL
- AND email IS NOT NULL
- AND name IS NOT NULL
- AND phone IS NOT NULL
- AND ssn IS NOT NULL
- );
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND name IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._position (SELECT dep_address, city, country FROM temp_table_join) ON CONFLICT (dep_address) DO NOTHING;
 INSERT INTO transducer._loop VALUES (-1);
@@ -964,47 +953,35 @@ WHERE ABS(loop_start) = row_count.rc_value) THEN
 ELSE
    RAISE NOTICE 'This should conclude with an INSERT on _EMPDEP';
 
-	INSERT INTO transducer._city_country (-- TODO: Maybe all select distinct
-SELECT DISTINCT city, country
+	INSERT INTO transducer._city_country (SELECT DISTINCT city, country
 FROM transducer._EMPDEP_INSERT_JOIN
 NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN
-WHERE ssn IS NOT NULL AND dep_address IS NOT NULL
--- TODO: Programatically generate the where is not null with primary keys from all join tables) ON CONFLICT (city) DO NOTHING;
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (city) DO NOTHING;
 
-	INSERT INTO transducer._department_city (-- TODO: Maybe all select distinct
-SELECT DISTINCT dep_address, city
+	INSERT INTO transducer._department_city (SELECT DISTINCT dep_address, city
 FROM transducer._EMPDEP_INSERT_JOIN
 NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN
-WHERE ssn IS NOT NULL AND dep_address IS NOT NULL
--- TODO: Programatically generate the where is not null with primary keys from all join tables) ON CONFLICT (dep_address) DO NOTHING;
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (dep_address) DO NOTHING;
 
-	INSERT INTO transducer._department (-- TODO: Maybe all select distinct
-SELECT DISTINCT dep_name, dep_address
+	INSERT INTO transducer._department (SELECT DISTINCT dep_name, dep_address
 FROM transducer._EMPDEP_INSERT_JOIN
 NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN
-WHERE ssn IS NOT NULL AND dep_address IS NOT NULL
--- TODO: Programatically generate the where is not null with primary keys from all join tables) ON CONFLICT (dep_name) DO NOTHING;
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (dep_name) DO NOTHING;
 
-	INSERT INTO transducer._person (-- TODO: Maybe all select distinct
-SELECT DISTINCT ssn, name, dep_name
+	INSERT INTO transducer._person (SELECT DISTINCT ssn, name, dep_name
 FROM transducer._EMPDEP_INSERT_JOIN
 NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN
-WHERE ssn IS NOT NULL AND dep_address IS NOT NULL
--- TODO: Programatically generate the where is not null with primary keys from all join tables) ON CONFLICT (ssn) DO NOTHING;
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (ssn) DO NOTHING;
 
-	INSERT INTO transducer._person_email (-- TODO: Maybe all select distinct
-SELECT DISTINCT ssn, email
+	INSERT INTO transducer._person_email (SELECT DISTINCT ssn, email
 FROM transducer._EMPDEP_INSERT_JOIN
 NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN
-WHERE ssn IS NOT NULL AND dep_address IS NOT NULL
--- TODO: Programatically generate the where is not null with primary keys from all join tables) ON CONFLICT (ssn,email) DO NOTHING;
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (ssn,email) DO NOTHING;
 
-	INSERT INTO transducer._person_phone (-- TODO: Maybe all select distinct
-SELECT DISTINCT ssn, phone
+	INSERT INTO transducer._person_phone (SELECT DISTINCT ssn, phone
 FROM transducer._EMPDEP_INSERT_JOIN
 NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN
-WHERE ssn IS NOT NULL AND dep_address IS NOT NULL
--- TODO: Programatically generate the where is not null with primary keys from all join tables) ON CONFLICT (ssn,phone) DO NOTHING;
+WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (ssn,phone) DO NOTHING;
 
 	DELETE FROM transducer._empdep_INSERT;
 	DELETE FROM transducer._position_INSERT;
