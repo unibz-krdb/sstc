@@ -1,16 +1,6 @@
 DROP SCHEMA IF EXISTS transducer CASCADE;
 CREATE SCHEMA transducer;
 
-/* SOURCE TABLES */
-
-CREATE TABLE transducer._POSITION
-   (
-      dep_address VARCHAR(100) NOT NULL,
-      city VARCHAR(100) NOT NULL,
-      country VARCHAR(100) NOT NULL
-   );
-ALTER TABLE transducer._POSITION ADD PRIMARY KEY (dep_address);
-
 CREATE TABLE transducer._EMPDEP
     (
       ssn VARCHAR(100) NOT NULL,
@@ -20,10 +10,28 @@ CREATE TABLE transducer._EMPDEP
       dep_name VARCHAR(100) NOT NULL,
       dep_address VARCHAR(100) NOT NULL
     );
-ALTER TABLE transducer._EMPDEP ADD PRIMARY KEY (ssn,phone,email);
-ALTER TABLE transducer._EMPDEP ADD FOREIGN KEY (dep_address) REFERENCES transducer._POSITION(dep_address);
 
-/* SOURCE CONSTRAINTS */
+CREATE TABLE transducer._POSITION
+   (
+      dep_address VARCHAR(100) NOT NULL,
+      city VARCHAR(100) NOT NULL,
+      country VARCHAR(100) NOT NULL
+   );
+
+ALTER TABLE transducer._EMPDEP ADD PRIMARY KEY (ssn,phone,email);
+ALTER TABLE transducer._POSITION ADD PRIMARY KEY (dep_address);
+
+/*
+So, this doesn't work, which is a huge problem.
+Adding constraints and playing around with references to subset of composite primary key add a bit of complexity to the schema.
+But I think a tailor made inclusion dependency constraint between the two tables should work, assuming that _EMPDEP is the main table being referenced by PERSON_CAR
+
+ALTER TABLE transducer._PERSON_CAR 
+ADD FOREIGN KEY (ssn) REFERENCES transducer._EMPDEP(ssn);
+*/
+
+ALTER TABLE transducer._EMPDEP
+ADD FOREIGN KEY (dep_address) REFERENCES transducer._POSITION(dep_address);
 
 CREATE OR REPLACE FUNCTION transducer.check_EMPDEP_mvd_FN_1()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
@@ -43,11 +51,6 @@ BEGIN
    END IF;
 END;
 $$;
-
-CREATE OR REPLACE TRIGGER EMPDEP_mvd_trigger_1
-BEFORE INSERT ON transducer._EMPDEP
-FOR EACH ROW
-EXECUTE FUNCTION transducer.check_EMPDEP_mvd_FN_1();
 
 
 CREATE OR REPLACE FUNCTION transducer.check_EMPDEP_mvd_FN_2()
@@ -80,11 +83,6 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE TRIGGER EMPDEP_mvd_trigger_2
-AFTER INSERT ON transducer._EMPDEP
-FOR EACH ROW
-EXECUTE FUNCTION transducer.check_EMPDEP_mvd_FN_2();
-
 CREATE OR REPLACE FUNCTION transducer.check_EMPDEP_FD_FN()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 BEGIN
@@ -100,11 +98,6 @@ BEGIN
    END IF;
 END;
 $$;
-
-CREATE TRIGGER EMPDEP_fd_trigger
-BEFORE INSERT ON transducer._EMPDEP
-FOR EACH ROW
-EXECUTE FUNCTION transducer.check_EMPDEP_fd_FN();
 
 CREATE OR REPLACE FUNCTION transducer.check_POSITION_FD_FN()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
@@ -122,46 +115,103 @@ BEGIN
 END;
 $$;
 
-/*-----------------------------------------------------------------------------------------------------------------------------------------------------*/
 
-/* TARGET TABLES */
+
+CREATE OR REPLACE TRIGGER EMPDEP_mvd_trigger_1
+BEFORE INSERT ON transducer._EMPDEP
+FOR EACH ROW
+EXECUTE FUNCTION transducer.check_EMPDEP_mvd_FN_1();
+
+CREATE OR REPLACE TRIGGER EMPDEP_mvd_trigger_2
+AFTER INSERT ON transducer._EMPDEP
+FOR EACH ROW
+EXECUTE FUNCTION transducer.check_EMPDEP_mvd_FN_2();
+
+CREATE TRIGGER EMPDEP_fd_trigger
+BEFORE INSERT ON transducer._EMPDEP
+FOR EACH ROW
+EXECUTE FUNCTION transducer.check_EMPDEP_fd_FN();
+
+
+INSERT INTO transducer._POSITION (dep_address, city, country) VALUES
+('depadd1', 'Paris', 'France'),
+('depadd2', 'Roma', 'Italy'),
+('depadd3', 'London', 'UK');
+
+
+
+INSERT INTO transducer._EMPDEP (ssn, name, phone, email, dep_name, dep_address) VALUES
+('ssn1', 'John', 'phone11', 'mail11', 'dep1', 'depadd1'),
+('ssn1', 'John', 'phone12', 'mail11','dep1', 'depadd1'),
+('ssn2', 'Jane', 'phone21', 'mail21','dep2', 'depadd2'),
+('ssn3', 'June', 'phone31', 'mail31','dep3', 'depadd3'),
+('ssn3', 'June', 'phone31', 'mail32','dep3', 'depadd3'),
+('ssn3', 'June', 'phone32', 'mail31','dep3', 'depadd3'),
+('ssn3', 'June', 'phone32', 'mail32','dep3', 'depadd3')
+;
+
+
+
+
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------*/
 
 CREATE TABLE transducer._PERSON AS 
 SELECT DISTINCT ssn, name, dep_name FROM transducer._EMPDEP;
-ALTER TABLE transducer._PERSON ADD PRIMARY KEY (ssn);
-ALTER TABLE transducer._PERSON
-ADD FOREIGN KEY (dep_name) REFERENCES transducer._DEPARTMENT(dep_name);
 
 CREATE TABLE transducer._PERSON_PHONE AS
 SELECT DISTINCT ssn, phone FROM transducer._EMPDEP;
-ALTER TABLE transducer._PERSON_PHONE ADD PRIMARY KEY (ssn,phone);
-ALTER TABLE transducer._PERSON_PHONE
-ADD FOREIGN KEY (ssn) REFERENCES transducer._PERSON(ssn);
 
 CREATE TABLE transducer._PERSON_EMAIL AS 
 SELECT DISTINCT ssn, email FROM transducer._EMPDEP;
-ALTER TABLE transducer._PERSON_EMAIL ADD PRIMARY KEY (ssn,email);
-ALTER TABLE transducer._PERSON_EMAIL ADD FOREIGN KEY (ssn) REFERENCES transducer._PERSON(ssn);
 
 CREATE TABLE transducer._DEPARTMENT AS
 SELECT DISTINCT dep_name, dep_address FROM transducer._EMPDEP;
-ALTER TABLE transducer._DEPARTMENT ADD PRIMARY KEY (dep_name);
-ALTER TABLE transducer._DEPARTMENT
-ADD FOREIGN KEY (dep_address) REFERENCES transducer._DEPARTMENT_CITY(dep_address);
+
 
 CREATE TABLE transducer._DEPARTMENT_CITY AS
 SELECT DISTINCT dep_address, city FROM transducer._POSITION;
-ALTER TABLE transducer._DEPARTMENT_CITY ADD PRIMARY KEY (dep_address);
-ALTER TABLE transducer._DEPARTMENT_CITY
-ADD FOREIGN KEY (city) REFERENCES transducer._CITY_COUNTRY(city);
 
 CREATE TABLE transducer._CITY_COUNTRY AS
 SELECT DISTINCT city, country FROM transducer._POSITION;
+
+
+
+/*BASE CONSTRAINTS*/
+
+ALTER TABLE transducer._PERSON ADD PRIMARY KEY (ssn);
+
+ALTER TABLE transducer._DEPARTMENT ADD PRIMARY KEY (dep_name);
+
+ALTER TABLE transducer._PERSON_PHONE ADD PRIMARY KEY (ssn,phone);
+
+ALTER TABLE transducer._PERSON_EMAIL ADD PRIMARY KEY (ssn,email);
+
+
+ALTER TABLE transducer._DEPARTMENT_CITY ADD PRIMARY KEY (dep_address);
+
 ALTER TABLE transducer._CITY_COUNTRY ADD PRIMARY KEY (city);
 
-/*-----------------------------------------------------------------------------------------------------------------------------------------------------*/
 
-/** INSERT TABLES **/
+
+ALTER TABLE transducer._PERSON_PHONE 
+ADD FOREIGN KEY (ssn) REFERENCES transducer._PERSON(ssn);
+
+ALTER TABLE transducer._PERSON_EMAIL 
+ADD FOREIGN KEY (ssn) REFERENCES transducer._PERSON(ssn);
+
+ALTER TABLE transducer._PERSON
+ADD FOREIGN KEY (dep_name) REFERENCES transducer._DEPARTMENT(dep_name);
+
+
+ALTER TABLE transducer._DEPARTMENT 
+ADD FOREIGN KEY (dep_address) REFERENCES transducer._DEPARTMENT_CITY(dep_address);
+
+ALTER TABLE transducer._DEPARTMENT_CITY
+ADD FOREIGN KEY (city) REFERENCES transducer._CITY_COUNTRY(city);
+
+
+
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------*/
 
 /* S -> T */
 
@@ -169,7 +219,7 @@ CREATE TABLE transducer._EMPDEP_INSERT AS
 SELECT * FROM transducer._EMPDEP
 WHERE 1<>1;
 
-CREATE TABLE transducer._EMPDEP_INSERT_JOIN AS
+CREATE TABLE transducer._EMPDEP_DELETE AS
 SELECT * FROM transducer._EMPDEP
 WHERE 1<>1;
 
@@ -177,61 +227,12 @@ CREATE TABLE transducer._POSITION_INSERT AS
 SELECT * FROM transducer._POSITION
 WHERE 1<>1;
 
-CREATE TABLE transducer._POSITION_INSERT_JOIN AS
+CREATE TABLE transducer._POSITION_DELETE AS
 SELECT * FROM transducer._POSITION
 WHERE 1<>1;
 
-/* T -> S */
 
-CREATE TABLE transducer._PERSON_INSERT AS
-SELECT * FROM transducer._PERSON
-WHERE 1<>1;
-
-CREATE TABLE transducer._PERSON_INSERT_JOIN AS
-SELECT * FROM transducer._PERSON
-WHERE 1<>1;
-
-CREATE TABLE transducer._PERSON_EMAIL_INSERT AS
-SELECT * FROM transducer._PERSON_EMAIL
-WHERE 1<>1;
-
-CREATE TABLE transducer._PERSON_EMAIL_INSERT_JOIN AS
-SELECT * FROM transducer._PERSON_EMAIL
-WHERE 1<>1;
-
-CREATE TABLE transducer._PERSON_PHONE_INSERT AS
-SELECT * FROM transducer._PERSON_PHONE
-WHERE 1<>1;
-
-CREATE TABLE transducer._DEPARTMENT_INSERT AS
-SELECT * FROM transducer._DEPARTMENT
-WHERE 1<>1;
-
-CREATE TABLE transducer._DEPARTMENT_INSERT_JOIN AS
-SELECT * FROM transducer._DEPARTMENT
-WHERE 1<>1;
-
-CREATE TABLE transducer._DEPARTMENT_CITY_INSERT AS
-SELECT * FROM transducer._DEPARTMENT_CITY
-WHERE 1<>1;
-
-CREATE TABLE transducer._DEPARTMENT_CITY_INSERT_JOIN AS
-SELECT * FROM transducer._DEPARTMENT_CITY
-WHERE 1<>1;
-
-CREATE TABLE transducer._CITY_COUNTRY_INSERT AS
-SELECT * FROM transducer._CITY_COUNTRY
-WHERE 1<>1;
-
-CREATE TABLE transducer._CITY_COUNTRY_INSERT_JOIN AS
-SELECT * FROM transducer._CITY_COUNTRY
-WHERE 1<>1;
-
-/** DELETE TABLES **/
-
-/* S -> T */
-
-CREATE TABLE transducer._EMPDEP_DELETE AS
+CREATE TABLE transducer._EMPDEP_INSERT_JOIN AS
 SELECT * FROM transducer._EMPDEP
 WHERE 1<>1;
 
@@ -239,7 +240,7 @@ CREATE TABLE transducer._EMPDEP_DELETE_JOIN AS
 SELECT * FROM transducer._EMPDEP
 WHERE 1<>1;
 
-CREATE TABLE transducer._POSITION_DELETE AS
+CREATE TABLE transducer._POSITION_INSERT_JOIN AS
 SELECT * FROM transducer._POSITION
 WHERE 1<>1;
 
@@ -247,9 +248,63 @@ CREATE TABLE transducer._POSITION_DELETE_JOIN AS
 SELECT * FROM transducer._POSITION
 WHERE 1<>1;
 
-/* T -> S */
+
+
+
+/** INSERT T -> S **/
+
+CREATE TABLE transducer._PERSON_INSERT AS
+SELECT * FROM transducer._PERSON
+WHERE 1<>1;
 
 CREATE TABLE transducer._PERSON_DELETE AS
+SELECT * FROM transducer._PERSON
+WHERE 1<>1;
+
+CREATE TABLE transducer._PERSON_PHONE_INSERT AS
+SELECT * FROM transducer._PERSON_PHONE
+WHERE 1<>1;
+
+CREATE TABLE transducer._PERSON_PHONE_DELETE AS
+SELECT * FROM transducer._PERSON_PHONE
+WHERE 1<>1;
+
+CREATE TABLE transducer._PERSON_EMAIL_INSERT AS
+SELECT * FROM transducer._PERSON_EMAIL
+WHERE 1<>1;
+
+CREATE TABLE transducer._PERSON_EMAIL_DELETE AS
+SELECT * FROM transducer._PERSON_EMAIL
+WHERE 1<>1;
+
+CREATE TABLE transducer._DEPARTMENT_INSERT AS
+SELECT * FROM transducer._DEPARTMENT
+WHERE 1<>1;
+
+CREATE TABLE transducer._DEPARTMENT_DELETE AS
+SELECT * FROM transducer._DEPARTMENT
+WHERE 1<>1;
+
+CREATE TABLE transducer._DEPARTMENT_CITY_INSERT AS
+SELECT * FROM transducer._DEPARTMENT_CITY
+WHERE 1<>1;
+
+CREATE TABLE transducer._DEPARTMENT_CITY_DELETE AS
+SELECT * FROM transducer._DEPARTMENT_CITY
+WHERE 1<>1;
+
+CREATE TABLE transducer._CITY_COUNTRY_INSERT AS
+SELECT * FROM transducer._CITY_COUNTRY
+WHERE 1<>1;
+
+CREATE TABLE transducer._CITY_COUNTRY_DELETE AS
+SELECT * FROM transducer._CITY_COUNTRY
+WHERE 1<>1;
+
+
+
+
+CREATE TABLE transducer._PERSON_INSERT_JOIN AS
 SELECT * FROM transducer._PERSON
 WHERE 1<>1;
 
@@ -257,7 +312,7 @@ CREATE TABLE transducer._PERSON_DELETE_JOIN AS
 SELECT * FROM transducer._PERSON
 WHERE 1<>1;
 
-CREATE TABLE transducer._PERSON_PHONE_DELETE AS
+CREATE TABLE transducer._PERSON_PHONE_INSERT_JOIN AS
 SELECT * FROM transducer._PERSON_PHONE
 WHERE 1<>1;
 
@@ -265,7 +320,7 @@ CREATE TABLE transducer._PERSON_PHONE_DELETE_JOIN AS
 SELECT * FROM transducer._PERSON_PHONE
 WHERE 1<>1;
 
-CREATE TABLE transducer._PERSON_EMAIL_DELETE AS
+CREATE TABLE transducer._PERSON_EMAIL_INSERT_JOIN AS
 SELECT * FROM transducer._PERSON_EMAIL
 WHERE 1<>1;
 
@@ -273,7 +328,7 @@ CREATE TABLE transducer._PERSON_EMAIL_DELETE_JOIN AS
 SELECT * FROM transducer._PERSON_EMAIL
 WHERE 1<>1;
 
-CREATE TABLE transducer._DEPARTMENT_DELETE AS
+CREATE TABLE transducer._DEPARTMENT_INSERT_JOIN AS
 SELECT * FROM transducer._DEPARTMENT
 WHERE 1<>1;
 
@@ -281,7 +336,7 @@ CREATE TABLE transducer._DEPARTMENT_DELETE_JOIN AS
 SELECT * FROM transducer._DEPARTMENT
 WHERE 1<>1;
 
-CREATE TABLE transducer._DEPARTMENT_CITY_DELETE AS
+CREATE TABLE transducer._DEPARTMENT_CITY_INSERT_JOIN AS
 SELECT * FROM transducer._DEPARTMENT_CITY
 WHERE 1<>1;
 
@@ -289,7 +344,7 @@ CREATE TABLE transducer._DEPARTMENT_CITY_DELETE_JOIN AS
 SELECT * FROM transducer._DEPARTMENT_CITY
 WHERE 1<>1;
 
-CREATE TABLE transducer._CITY_COUNTRY_DELETE AS
+CREATE TABLE transducer._CITY_COUNTRY_INSERT_JOIN AS
 SELECT * FROM transducer._CITY_COUNTRY
 WHERE 1<>1;
 
@@ -297,15 +352,12 @@ CREATE TABLE transducer._CITY_COUNTRY_DELETE_JOIN AS
 SELECT * FROM transducer._CITY_COUNTRY
 WHERE 1<>1;
 
-/* LOOP PREVENTION MECHANISM */
 
 CREATE TABLE transducer._LOOP (loop_start INT NOT NULL );
 
 /*-----------------------------------------------------------------------------------------------------------------------------------------------------*/
 
-/** Insertion Functions & Triggers **/
-
-/* S->T INSERTS */
+/** S->T INSERTS **/
 
 CREATE OR REPLACE FUNCTION transducer.source_EMPDEP_INSERT_FN()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
@@ -391,8 +443,6 @@ DROP TABLE temp_table;
 RETURN NEW;
 END;  $$;
 
--- CURRENT
-
 CREATE OR REPLACE FUNCTION transducer.SOURCE_INSERT_FN()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 BEGIN
@@ -413,20 +463,22 @@ ELSE
    INSERT INTO transducer._DEPARTMENT (SELECT DISTINCT dep_name, dep_address FROM transducer._EMPDEP_INSERT_JOIN
       NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN WHERE ssn IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (dep_name) DO NOTHING;
 
+   INSERT INTO transducer._PERSON (SELECT DISTINCT ssn, name, dep_name FROM transducer._EMPDEP_INSERT_JOIN
+      NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN WHERE ssn IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (ssn) DO NOTHING;
+
    INSERT INTO transducer._PERSON_PHONE (SELECT DISTINCT ssn, phone FROM transducer._EMPDEP_INSERT_JOIN
       NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN WHERE ssn IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (ssn,phone) DO NOTHING;
 
    INSERT INTO transducer._PERSON_EMAIL (SELECT DISTINCT ssn, email FROM transducer._EMPDEP_INSERT_JOIN
       NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN WHERE ssn IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (ssn,email) DO NOTHING;
 
-   INSERT INTO transducer._PERSON (SELECT DISTINCT ssn, name, dep_name FROM transducer._EMPDEP_INSERT_JOIN
-      NATURAL LEFT OUTER JOIN transducer._POSITION_INSERT_JOIN WHERE ssn IS NOT NULL AND dep_address IS NOT NULL) ON CONFLICT (ssn) DO NOTHING;
 
    DELETE FROM transducer._EMPDEP_INSERT;
    DELETE FROM transducer._POSITION_INSERT;
    DELETE FROM transducer._EMPDEP_INSERT_JOIN;
    DELETE FROM transducer._POSITION_INSERT_JOIN;
-   DELETE FROM transducer._loop NEW;
+   DELETE FROM transducer._loop;
+   RETURN NEW;
 END IF;
 END;  $$;
 
@@ -908,25 +960,25 @@ ELSE
       AND email IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL
       AND city IS NOT NULL AND country IS NOT NULL);
 
-   INSERT INTO transducer._POSITION (SELECT dep_address, city, country FROM temp_table_join) ON CONFLICT (dep_address) DO NOTHING;
-   INSERT INTO transducer._loop VALUES (-1);
-   INSERT INTO transducer._EMPDEP (SELECT ssn, name, phone, email, dep_name, dep_address FROM temp_table_join) ON CONFLICT (ssn, phone, email) DO NOTHING;
+      INSERT INTO transducer._POSITION (SELECT dep_address, city, country FROM temp_table_join) ON CONFLICT (dep_address) DO NOTHING;
+      INSERT INTO transducer._loop VALUES (-1);
+      INSERT INTO transducer._EMPDEP (SELECT ssn, name, phone, email, dep_name, dep_address FROM temp_table_join) ON CONFLICT (ssn, phone, email) DO NOTHING;
       
-   DELETE FROM transducer._PERSON_INSERT;
-   DELETE FROM transducer._PERSON_EMAIL_INSERT;
-   DELETE FROM transducer._PERSON_PHONE_INSERT;
-   DELETE FROM transducer._DEPARTMENT_INSERT;
-   DELETE FROM transducer._DEPARTMENT_CITY_INSERT;
-   DELETE FROM transducer._CITY_COUNTRY_INSERT;
+      DELETE FROM transducer._PERSON_INSERT;
+      DELETE FROM transducer._PERSON_EMAIL_INSERT;
+      DELETE FROM transducer._PERSON_PHONE_INSERT;
+      DELETE FROM transducer._DEPARTMENT_INSERT;
+      DELETE FROM transducer._DEPARTMENT_CITY_INSERT;
+      DELETE FROM transducer._CITY_COUNTRY_INSERT;
 
-   DELETE FROM transducer._PERSON_INSERT_JOIN;
-   DELETE FROM transducer._PERSON_EMAIL_INSERT_JOIN;
-   DELETE FROM transducer._PERSON_PHONE_INSERT_JOIN;
-   DELETE FROM transducer._DEPARTMENT_INSERT_JOIN;
-   DELETE FROM transducer._DEPARTMENT_CITY_INSERT_JOIN;
-   DELETE FROM transducer._CITY_COUNTRY_INSERT_JOIN;
+      DELETE FROM transducer._PERSON_INSERT_JOIN;
+      DELETE FROM transducer._PERSON_EMAIL_INSERT_JOIN;
+      DELETE FROM transducer._PERSON_PHONE_INSERT_JOIN;
+      DELETE FROM transducer._DEPARTMENT_INSERT_JOIN;
+      DELETE FROM transducer._DEPARTMENT_CITY_INSERT_JOIN;
+      DELETE FROM transducer._CITY_COUNTRY_INSERT_JOIN;
 
-   DELETE FROM transducer._loop;
+      DELETE FROM transducer._loop;
    DELETE FROM temp_table_join;
    DROP TABLE temp_table_join;
    RETURN NEW;

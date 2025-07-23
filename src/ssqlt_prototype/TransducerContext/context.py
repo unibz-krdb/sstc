@@ -37,7 +37,7 @@ CREATE TRIGGER target_insert_{tablename}_trigger
 AFTER INSERT ON {self.target.schema}.{tablename}
 FOR EACH ROW
 EXECUTE FUNCTION {self.target.schema}.target_insert_fn();
-"""
+""".strip()
         
     def generate_source_insert_trigger(self, tablename: str) -> str:
         return f"""
@@ -45,7 +45,7 @@ CREATE TRIGGER source_insert_{tablename}_trigger
 AFTER INSERT ON {self.source.schema}.{tablename}
 FOR EACH ROW
 EXECUTE FUNCTION {self.source.schema}.source_insert_fn();
-"""
+""".strip()
 
     def generate_target_insert(self):
         result = ""
@@ -63,6 +63,8 @@ RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 DECLARE
 v_loop INT;
 BEGIN
+
+RAISE NOTICE 'Function {schema}.target_insert_fn called';
 
 SELECT count(*) INTO v_loop from transducer._loop;
 
@@ -134,7 +136,7 @@ END IF;
 END;    $$;
 """
 
-        return result
+        return result.strip()
 
     def generate_source_insert(self):
 
@@ -144,7 +146,7 @@ END;    $$;
 CREATE OR REPLACE FUNCTION {schema}.source_insert_fn()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 BEGIN
-RAISE NOTICE 'Something got added in a JOIN table';
+RAISE NOTICE 'Function {schema}.source_insert_fn called';
 IF NOT EXISTS (SELECT * FROM transducer._loop, (SELECT COUNT(*) as rc_value FROM transducer._loop) AS row_count
 WHERE ABS(loop_start) = row_count.rc_value) THEN
    RAISE NOTICE 'But now is not the time to generate the query';
@@ -156,7 +158,7 @@ ELSE
 
         def get_insert(target: str):
             table = self.target.tables[target]
-            mapping_str = "(" + full_join_table.mapping_sql(select_preamble="SELECT DISTINCT", custom_attributes=table.attributes, primary_suffix="_INSERT_JOIN", secondary_suffix="_INSERT_JOIN") + ")"
+            mapping_str = "(" + full_join_table.mapping_sql(select_preamble="SELECT DISTINCT", custom_attributes=table.attributes, primary_suffix="_INSERT_JOIN", secondary_suffix="_INSERT_JOIN", where=True) + ")"
 
             result = f"\n\tINSERT INTO {schema}.{target} "
             result += "" + mapping_str + ""
@@ -173,14 +175,15 @@ ELSE
         for tablename in self.source.ordering[::-1]:
             result += f"\n\tDELETE FROM {schema}.{tablename}_INSERT_JOIN;"
 
-        result += f"\n\tDELETE FROM {schema}._loop NEW;"
+        result += f"\n\tDELETE FROM {schema}._loop;"
 
         result += """
+RETURN NEW;
 END IF;
 END;  $$;
 """
 
-        return result
+        return result.strip()
 
     def generate_target_delete(self):
         return NotImplementedError("Target delete generation is not implemented yet.")

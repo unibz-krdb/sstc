@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from .universal_mapping import UniversalMapping
 from .table import Table
 
 
@@ -9,10 +8,10 @@ class InsertTable:
     source: Table
     schema: str
     table: str
-    universal_mapping: UniversalMapping
 
     def __init__(self, source: Table) -> None:
         self.source = source
+        self.schema = source.schema
         self.table = source.name + "_INSERT"
 
     def create_sql(self) -> str:
@@ -29,7 +28,7 @@ class InsertTable:
         sql = f"""CREATE OR REPLACE FUNCTION {function_name}()
    RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
    BEGIN
-   RAISE NOTICE 'Triggered function {function_name} called';
+   RAISE NOTICE 'Function {function_name} called';
    IF EXISTS (SELECT * FROM {self.source.schema}._loop) THEN
       DELETE FROM {self.source.schema}._loop;
       DELETE FROM {self.source.schema}.{self.table};
@@ -42,12 +41,12 @@ class InsertTable:
 END;  $$;
 """
 
-        return sql
+        return sql.strip()
 
     def generate_trigger(self) -> str:
         sql = f"""CREATE TRIGGER {self.source.schema}_{self.table}_trigger
 AFTER INSERT ON {self.source.schema}.{self.source.name}
 FOR EACH ROW
 EXECUTE FUNCTION {self.source.schema}.{self.table}_fn();
-        """
-        return sql
+"""
+        return sql.strip()

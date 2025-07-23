@@ -1,7 +1,6 @@
 from .constraint import Constraint as Constraint
 from .create_table import CreateTable as CreateTable
 from .insert_table import InsertTable as InsertTable
-from .delete_table import DeleteTable as DeleteTable
 from .mapping import Mapping as Mapping
 from .join_table import JoinTable as JoinTable
 from .enums import SourceTarget as SourceTarget

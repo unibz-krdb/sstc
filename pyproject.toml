@@ -5,8 +5,8 @@ build-backend = "hatchling.build"
 [project]
 name = "ssqlt-prototype"
 version = "0.0.0dev0"
-dependencies = ["moz_sql_parser"]
-requires-python = ">= 3.8"
+dependencies = ["moz_sql_parser", "Jinja2"]
+requires-python = ">= 3.11"
 authors = [
     {"name" = "Aidan Bailey", email = "BLYAID001@myuct.ac.za"}
 ]

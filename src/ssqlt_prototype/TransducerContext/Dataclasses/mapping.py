@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from typing import Self
-from string import Template
+from jinja2 import Template
 
 
 @dataclass
@@ -36,4 +36,4 @@ class Mapping:
         subsitution_mapping = {}
         for i, table in enumerate(source_tables):
             subsitution_mapping[f"S{i}"] = table
-        return self.sql_template.substitute(subsitution_mapping)
+        return self.sql_template.render(**subsitution_mapping)

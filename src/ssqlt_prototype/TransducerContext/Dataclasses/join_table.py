@@ -32,7 +32,7 @@ class JoinTable:
     def generate_insert_function(self) -> str:
         return self._generate_function(
             self.insert_tablename, insert_delete=Constraint.InsertDelete.INSERT
-        )
+        ).strip()
 
     def generate_delete_function(self) -> str:
         return self._generate_function(
@@ -54,6 +54,7 @@ class JoinTable:
         sql = f"""CREATE OR REPLACE FUNCTION {self.create_table.schema}.{tablename}_FN()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 BEGIN
+RAISE NOTICE 'Function {self.create_table.schema}.{tablename}_FN called';
 """
 
         # Create temporary table

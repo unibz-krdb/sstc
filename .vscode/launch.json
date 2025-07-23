@@ -5,11 +5,25 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Table Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["-k", "test_tables"],
+        },
+        {
             "name": "Generator Tests",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": ["-k", "test_generator"],
+        },
+        {
+            "name": "Context Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["-k", "test_context"],
         }
     ]
 }
