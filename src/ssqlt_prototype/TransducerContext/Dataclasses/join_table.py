@@ -4,6 +4,7 @@ from typing import Literal
 from .db_context import DbContext
 from .constraint import Constraint
 from .table import Table
+from .enums import SourceTarget
 
 
 @dataclass
@@ -29,18 +30,18 @@ class JoinTable:
     def create_delete_sql(self) -> str:
         return self._create_sql(self.delete_tablename)
 
-    def generate_insert_function(self) -> str:
+    def generate_insert_function(self, source_target: SourceTarget) -> str:
         return self._generate_function(
-            self.insert_tablename, insert_delete=Constraint.InsertDelete.INSERT
+            self.insert_tablename, insert_delete=Constraint.InsertDelete.INSERT, source_target=source_target
         ).strip()
 
-    def generate_delete_function(self) -> str:
+    def generate_delete_function(self, source_target: SourceTarget) -> str:
         return self._generate_function(
-            self.delete_tablename, insert_delete=Constraint.InsertDelete.DELETE
+            self.delete_tablename, insert_delete=Constraint.InsertDelete.DELETE, source_target=source_target
         )
 
     def _generate_function(
-        self, tablename: str, insert_delete: Constraint.InsertDelete
+            self, tablename: str, insert_delete: Constraint.InsertDelete, source_target: SourceTarget
     ) -> str:
         ordering = self.context.ordering
 
@@ -49,6 +50,12 @@ class JoinTable:
             ordering = list(reversed(ordering))
         else:
             suffix = "_DELETE"
+
+        match source_target:
+            case SourceTarget.SOURCE:
+                loop_val = 1
+            case SourceTarget.TARGET:
+                loop_val = -1
 
         # Function Header
         sql = f"""CREATE OR REPLACE FUNCTION {self.create_table.schema}.{tablename}_FN()
@@ -75,7 +82,7 @@ RAISE NOTICE 'Function {self.create_table.schema}.{tablename}_FN called';
             sql += f"\nINSERT INTO {self.create_table.schema}.{table.name}{suffix}_JOIN ({partner_sql});"
 
             if i == len(ordering) - 2:
-                sql += f"\nINSERT INTO {self.create_table.schema}._LOOP VALUES (1);"
+                sql += f"\nINSERT INTO {self.create_table.schema}._LOOP VALUES ({loop_val});"
 
         # Conclude
 

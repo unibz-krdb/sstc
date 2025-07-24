@@ -93,7 +93,7 @@ class Generator:
 
             table = self.join_tables[tablename]
             result += f"-- insert join function\n"
-            result += table.generate_insert_function() + "\n\n"
+            result += table.generate_insert_function(source_target=source_target) + "\n\n"
             result += f"-- insert join trigger\n"
             result += table.generate_insert_trigger() + "\n"
 
