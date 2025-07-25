@@ -482,7 +482,7 @@ INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_ta
 INSERT INTO transducer._person_INSERT_JOIN (SELECT ssn, name, dep_name FROM temp_table);
 INSERT INTO transducer._department_INSERT_JOIN (SELECT dep_name, dep_address FROM temp_table);
 INSERT INTO transducer._department_city_INSERT_JOIN (SELECT dep_address, city FROM temp_table);
-INSERT INTO transducer._LOOP VALUES (1);
+INSERT INTO transducer._LOOP VALUES (-1);
 INSERT INTO transducer._city_country_INSERT_JOIN (SELECT city, country FROM temp_table);
 
 DELETE FROM temp_table;
@@ -550,7 +550,7 @@ INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_ta
 INSERT INTO transducer._person_INSERT_JOIN (SELECT ssn, name, dep_name FROM temp_table);
 INSERT INTO transducer._department_INSERT_JOIN (SELECT dep_name, dep_address FROM temp_table);
 INSERT INTO transducer._department_city_INSERT_JOIN (SELECT dep_address, city FROM temp_table);
-INSERT INTO transducer._LOOP VALUES (1);
+INSERT INTO transducer._LOOP VALUES (-1);
 INSERT INTO transducer._city_country_INSERT_JOIN (SELECT city, country FROM temp_table);
 
 DELETE FROM temp_table;
@@ -618,7 +618,7 @@ INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_ta
 INSERT INTO transducer._person_INSERT_JOIN (SELECT ssn, name, dep_name FROM temp_table);
 INSERT INTO transducer._department_INSERT_JOIN (SELECT dep_name, dep_address FROM temp_table);
 INSERT INTO transducer._department_city_INSERT_JOIN (SELECT dep_address, city FROM temp_table);
-INSERT INTO transducer._LOOP VALUES (1);
+INSERT INTO transducer._LOOP VALUES (-1);
 INSERT INTO transducer._city_country_INSERT_JOIN (SELECT city, country FROM temp_table);
 
 DELETE FROM temp_table;
@@ -686,7 +686,7 @@ INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_ta
 INSERT INTO transducer._person_INSERT_JOIN (SELECT ssn, name, dep_name FROM temp_table);
 INSERT INTO transducer._department_INSERT_JOIN (SELECT dep_name, dep_address FROM temp_table);
 INSERT INTO transducer._department_city_INSERT_JOIN (SELECT dep_address, city FROM temp_table);
-INSERT INTO transducer._LOOP VALUES (1);
+INSERT INTO transducer._LOOP VALUES (-1);
 INSERT INTO transducer._city_country_INSERT_JOIN (SELECT city, country FROM temp_table);
 
 DELETE FROM temp_table;
@@ -754,7 +754,7 @@ INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_ta
 INSERT INTO transducer._person_INSERT_JOIN (SELECT ssn, name, dep_name FROM temp_table);
 INSERT INTO transducer._department_INSERT_JOIN (SELECT dep_name, dep_address FROM temp_table);
 INSERT INTO transducer._department_city_INSERT_JOIN (SELECT dep_address, city FROM temp_table);
-INSERT INTO transducer._LOOP VALUES (1);
+INSERT INTO transducer._LOOP VALUES (-1);
 INSERT INTO transducer._city_country_INSERT_JOIN (SELECT city, country FROM temp_table);
 
 DELETE FROM temp_table;
@@ -822,7 +822,7 @@ INSERT INTO transducer._person_email_INSERT_JOIN (SELECT ssn, email FROM temp_ta
 INSERT INTO transducer._person_INSERT_JOIN (SELECT ssn, name, dep_name FROM temp_table);
 INSERT INTO transducer._department_INSERT_JOIN (SELECT dep_name, dep_address FROM temp_table);
 INSERT INTO transducer._department_city_INSERT_JOIN (SELECT dep_address, city FROM temp_table);
-INSERT INTO transducer._LOOP VALUES (1);
+INSERT INTO transducer._LOOP VALUES (-1);
 INSERT INTO transducer._city_country_INSERT_JOIN (SELECT city, country FROM temp_table);
 
 DELETE FROM temp_table;
