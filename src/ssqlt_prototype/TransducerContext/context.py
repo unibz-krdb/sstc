@@ -75,15 +75,17 @@ ELSE
    RAISE NOTICE 'This should conclude with an INSERT on _EMPDEP';
         """
 
+        all_attributes = self.source.all_attributes()
+
         result += self.source.create_temp_table(temp_tablename)
 
         full_mapping_tablename = target_orderings[0]
         table = self.target.tables[full_mapping_tablename]
         full_mapping = table.mapping_sql(
-            attributes=self.target.all_attributes(),
+            attributes=all_attributes,
             primary_suffix="_INSERT_JOIN",
             secondary_suffix="_INSERT_JOIN",
-            non_null_attributes=self.target.all_attributes()
+            non_null_attributes=all_attributes
         )
         result += f"\n\nINSERT INTO {temp_tablename}({full_mapping});"
 

@@ -876,14 +876,14 @@ create temporary table temp_table_join (
 	country VARCHAR(100)
 );
 
-INSERT INTO temp_table_join(SELECT DISTINCT ssn, phone, email, name, dep_name, dep_address, city, country
+INSERT INTO temp_table_join(SELECT DISTINCT ssn, name, phone, email, dep_name, dep_address, city, country
 FROM transducer._CITY_COUNTRY_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_CITY_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._DEPARTMENT_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PERSON_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PERSON_PHONE_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PERSON_EMAIL_INSERT_JOIN
-WHERE ssn IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND name IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
+WHERE ssn IS NOT NULL AND name IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL AND city IS NOT NULL AND country IS NOT NULL);
 
 INSERT INTO transducer._position (SELECT dep_address, city, country FROM temp_table_join) ON CONFLICT (dep_address) DO NOTHING;
 INSERT INTO transducer._loop VALUES (-1);
