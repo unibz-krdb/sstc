@@ -1,0 +1,4 @@
+CREATE TABLE transducer._PERSON_EMAIL AS 
+SELECT DISTINCT ssn, email FROM transducer._PERSON;
+ALTER TABLE transducer._PERSON_EMAIL ADD PRIMARY KEY (ssn,email);
+ALTER TABLE transducer._PERSON_EMAIL ADD FOREIGN KEY (ssn) REFERENCES transducer._P(ssn);

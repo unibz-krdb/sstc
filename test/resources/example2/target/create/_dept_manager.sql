@@ -1,0 +1,6 @@
+CREATE TABLE transducer._DEPT_MANAGER AS
+	SELECT DISTINCT dept, manager FROM transducer._PERSON
+	WHERE dept IS NOT NULL AND manager IS NOT NULL;
+ALTER TABLE transducer._DEPT_MANAGER ADD PRIMARY KEY (dept);
+ALTER TABLE transducer._DEPT_MANAGER ADD FOREIGN KEY (dept) REFERENCES transducer._PED_DEPT(dept);
+ALTER TABLE transducer._DEPT_MANAGER ADD FOREIGN KEY (manager) REFERENCES transducer._P(ssn);

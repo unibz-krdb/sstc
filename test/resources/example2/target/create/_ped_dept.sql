@@ -1,0 +1,6 @@
+CREATE TABLE transducer._PED_DEPT AS
+	SELECT DISTINCT empid, dept FROM transducer._PERSON
+	WHERE empid IS NOT NULL AND dept IS NOT NULL;
+ALTER TABLE transducer._PED_DEPT ADD PRIMARY KEY (dept);
+ALTER TABLE transducer._PED_DEPT ADD FOREIGN KEY (dept) REFERENCES transducer._DEPT_MANAGER(dept);
+ALTER TABLE transducer._PED_DEPT ADD FOREIGN KEY (empid) REFERENCES transducer._PED(empid);
