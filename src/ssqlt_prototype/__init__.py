@@ -4,4 +4,5 @@ from .TransducerContext import (
     Mapping,
     InsertTable,
     Context,
+    Dependency,
 )

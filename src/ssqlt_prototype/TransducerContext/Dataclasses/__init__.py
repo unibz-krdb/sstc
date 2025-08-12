@@ -6,3 +6,4 @@ from .join_table import JoinTable as JoinTable
 from .enums import SourceTarget as SourceTarget
 from .attribute import Attribute as Attribute
 from .table import Table as Table, Attr as Attr
+from .dependency import Dependency as Dependency
