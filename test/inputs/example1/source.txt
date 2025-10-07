@@ -1,5 +1,4 @@
 Person_URA(ssn, empid, name, hdate, phone, email, dept, manager);
-
 pk_{ssn} Person_URA;
 mvd_{ssn, phone} Person_URA;
 mvd_{ssn, email} Person_URA;
