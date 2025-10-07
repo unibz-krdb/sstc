@@ -22,4 +22,4 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/unibz-krdb/ssqlt-prototype"
+Repository = "https://github.com/unibz-krdb/sstc"
