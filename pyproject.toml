@@ -3,17 +3,17 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ssqlt-prototype"
-version = "0.0.0dev0"
-dependencies = ["moz_sql_parser", "Jinja2"]
+name = "sstc"
+version = "0.0.1"
+dependencies = []
 requires-python = ">= 3.11"
 authors = [
-    {"name" = "Aidan Bailey", email = "BLYAID001@myuct.ac.za"}
+    {"name" = "Aidan Bailey", email = "abailey@airu.org.za"}
 ]
 maintainers = [
-    {"name" = "Aidan Bailey", email = "BLYAID001@myuct.ac.za"}
+    {"name" = "Aidan Bailey", email = "abailey@airu.org.za"}
 ]
-description = "A prototype for generating Semantic SQL Transducer bindings"
+description = "Compiles a Semantic SQL Transducer defined using relational algebra into SQL"
 readme = {file = "README.md", content-type = "text/markdown" }
 license = {file = "LICENSE"}
 keywords = []

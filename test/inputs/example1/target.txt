@@ -1,0 +1,41 @@
+Person(ssn, name)
+Person := \project_{ssn, name} Person_URA;
+pk_{ssn} Person;
+
+PersonPhone(ssn, phone)
+PersonPhone := \project_{ssn, phone} Person_URA;
+pk_{ssn, phone} PersonPhone;
+
+PersonEmail(ssn, email)
+PersonEmail := \project_{ssn, email} Person_URA;
+pk_{ssn, email} PersonEmail;
+
+Employee(ssn, empid)
+Employee := \project_{ssn, empid} \select_{defined(empid) and defined(hdate)} Person_URA;
+pk_{empid} Employee;
+
+EmployeeDate(empid, hdate)
+EmployeeDate := \project_{empid, hdate} \select_{defined(empid) and defined(hdate)} Person_URA;
+pk_{empid} EmployeeDate;
+
+PED(ssn, empid)
+PED := \project_{ssn, empid} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
+pk_{empid} PED;
+
+PEDDept(empid, dept)
+PEDDept := \project_{empid, dept} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
+pk_{empid} PED_Dept;
+
+DeptManager(dept, manager)
+DeptManager := \project_{dept, manager} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
+pk_{dept} Dept_Manager;
+
+inc=_{ssn, ssn} (Person, Person_Phone);
+inc=_{ssn, ssn} (Person, Person_Email);
+inc=_{empid, empid} (Employee, EmployeeDate);
+inc=_{empid, empid} (PED, PED_Dept);
+inc=_{dept, dept} (PEDDept, DeptManager);
+
+inc⊆_{ssn, ssn} (Employee, Person);
+inc⊆_{empid, empid} (PED, Employee);
+inc⊆_{manager, empid} (DeptManager, Employee);

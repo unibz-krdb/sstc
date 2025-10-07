@@ -1,0 +1,10 @@
+PED := \project_{ssn, empid} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
+PEDDept := \project_{empid, dept} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
+DeptManager := \project_{dept, manager} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
+Employee := \project_{ssn, empid} \select_{defined(empid) and defined(hdate)} Person_URA;
+Employee_Date := \project_{empid, hdate} \select_{defined(empid) and defined(hdate)} Person_URA;
+Person := \project_{ssn, name} Person_URA;
+PersonPhone := \project_{ssn, phone} Person_URA;
+PersonEmail := \project_{ssn, email} Person_URA;
+
+PersonURA := \project_{ssn, empid, name, hdate, phone, email, dept, manager} (Person \natural_join Person_Phone \natural_join Person_Email \natural_join Employee \natural_join Employee_Date \natural_join PED \natural_join PED_Dept \natural_join Dept_Manager);
