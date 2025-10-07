@@ -5,8 +5,8 @@ build-backend = "hatchling.build"
 [project]
 name = "sstc"
 version = "0.0.1"
-dependencies = []
-requires-python = ">= 3.11"
+dependencies = ["rapt2"]
+requires-python = ">= 3.13"
 authors = [
     {"name" = "Aidan Bailey", email = "abailey@airu.org.za"}
 ]
