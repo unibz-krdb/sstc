@@ -4,7 +4,7 @@ This is a Python-based prototype for the [Semantic SQL Transducer](https://githu
 
 ## Requirements
 
-- [Python3.8](https://www.python.org/) or greater 
+- [Python3.11](https://www.python.org/) or greater 
 - [PostgreSQL](https://www.postgresql.org/)
 
 ## Usage
