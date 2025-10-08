@@ -1,14 +1,21 @@
 from rapt2.rapt import Rapt
 from rapt2.treebrd.node import DefinitionNode, DependencyNode, Node
+from rapt2.treebrd.schema import Schema
 
 class SourceContext:
 
     relations: list[DefinitionNode]
     dependencies: list[DependencyNode]
+    schema: Schema
 
     def __init__(self, relations: list[DefinitionNode], dependencies: list[DependencyNode]):
         self.relations = relations
         self.dependencies = dependencies
+        self.schema = Schema()
+        for relation in relations:
+            if relation.name is None:
+                raise ValueError("Relation must have a name")
+            self.schema.add(relation.name, relation.attributes.names)
 
     @classmethod
     def from_file(cls, file_path: str):
