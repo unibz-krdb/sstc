@@ -2,13 +2,15 @@ from rapt2.rapt import Rapt
 from rapt2.treebrd.node import DefinitionNode, DependencyNode, Node
 from rapt2.treebrd.schema import Schema
 
-class SourceContext:
 
+class SourceContext:
     relations: list[DefinitionNode]
     dependencies: list[DependencyNode]
     schema: Schema
 
-    def __init__(self, relations: list[DefinitionNode], dependencies: list[DependencyNode]):
+    def __init__(
+        self, relations: list[DefinitionNode], dependencies: list[DependencyNode]
+    ):
         self.relations = relations
         self.dependencies = dependencies
         self.schema = Schema()
@@ -19,7 +21,7 @@ class SourceContext:
 
     @classmethod
     def from_file(cls, file_path: str):
-        with open(file_path, 'r') as file:
+        with open(file_path, "r") as file:
             content = file.read()
         return cls.from_string(instring=content)
 
