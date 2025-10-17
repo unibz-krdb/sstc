@@ -1,5 +1,6 @@
 from typing import Generic, Self, TypeVar
 
+from rapt2.rapt import sql_translator
 from rapt2.treebrd.node import (
     AssignNode,
     BinaryDependencyNode,
@@ -56,3 +57,5 @@ class Table(Generic[NodeType]):
 
         return tables
 
+    def create_stmt(self) -> str:
+        return sql_translator.translate(root_list=[self.node], use_bag_semantics=True)[0]

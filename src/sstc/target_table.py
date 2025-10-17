@@ -6,4 +6,5 @@ from .table import Table
 class TargetTable(Table[AssignNode]):
     """Target table with an AssignNode."""
 
-    pass
+    def create_stmt(self) -> str:
+        return super().create_stmt().replace("TEMPORARY TABLE", "TABLE")
