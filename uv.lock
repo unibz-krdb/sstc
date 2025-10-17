@@ -177,6 +177,6 @@ requires-dist = [{ name = "rapt2", editable = "../rapt2" }]
 [package.metadata.requires-dev]
 dev = [
     { name = "debugpy", specifier = ">=1.8.16" },
-    { name = "pytest" },
+    { name = "pytest", specifier = ">=8.4.2" },
     { name = "ruff", specifier = ">=0.12.12" },
 ]

@@ -23,7 +23,7 @@ classifiers = [
 dev = [
     "debugpy>=1.8.16",
     "ruff>=0.12.12",
-    "pytest"
+    "pytest>=8.4.2"
 ]
 
 [project.scripts]
