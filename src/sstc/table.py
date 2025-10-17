@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar
+from typing import Generic, Self, TypeVar
 
 from rapt2.treebrd.node import (
     AssignNode,
@@ -37,9 +37,9 @@ class Table(Generic[NodeType]):
         cls,
         nodes: list[NodeType],
         dependency_nodes: list[DependencyNode],
-    ) -> list["Table[NodeType]"]:
+    ) -> list[Self]:
         """Create tables from a list of relation nodes and dependency nodes."""
-        tables: list[Table[NodeType]] = []
+        tables: list[Self] = []
         for node in nodes:
             dependencies: list[DependencyNode] = []
             for dependency_node in dependency_nodes:

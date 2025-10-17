@@ -40,7 +40,7 @@ class SourceContext:
                 raise ValueError(f"Unexpected node type: {type(node)}")
 
         source_tables = SourceTable.from_relations_and_dependencies(
-            definition_nodes=relations,
+            nodes=relations,
             dependency_nodes=dependencies,
         )
 
