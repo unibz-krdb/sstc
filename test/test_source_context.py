@@ -8,7 +8,7 @@ from sstc import SourceContext, TargetContext
 def test_source_context_from_file(example_1_dir: str):
     context = SourceContext.from_file(os.path.join(example_1_dir, "source.txt"))
     assert isinstance(context, SourceContext)
-    assert len(context.relations) == 1
+    assert len(context.source_tables) == 1
     assert len(context.dependencies) == 7
     assert context.schema.to_dict() == {
         "person_ura": [

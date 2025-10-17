@@ -1,4 +1,5 @@
 from rapt2.treebrd.node import (
+    AssignNode,
     BinaryDependencyNode,
     DefinitionNode,
     DependencyNode,
@@ -9,51 +10,49 @@ from rapt2.treebrd.node import (
 )
 
 
-class SourceTable:
+class TargetTable:
 
-    definition_node: DefinitionNode
+    assign_node: AssignNode
     dependency_nodes: list[DependencyNode]
 
-    def __init__(
-        self, definition_node: DefinitionNode, dependency_nodes: list[DependencyNode]
-    ):
-        if definition_node.name is None:
+    def __init__(self, assign_node: AssignNode, dependency_nodes: list[DependencyNode]):
+        if assign_node.name is None:
             raise ValueError("DefinitionNode must have a name")
-        self.definition_node = definition_node
+        self.assign_node = assign_node
         self.dependency_nodes = dependency_nodes
 
     @property
     def name(self) -> str:
-        return self.definition_node.name
+        return self.assign_node.name
 
     @property
     def attributes(self) -> list[str]:
-        return self.definition_node.attributes.names
+        return self.assign_node.attributes.names
 
     @classmethod
     def from_relations_and_dependencies(
         cls,
-        definition_nodes: list[DefinitionNode],
+        assign_nodes: list[AssignNode],
         dependency_nodes: list[DependencyNode],
-    ) -> list["SourceTable"]:
-        source_tables: list[SourceTable] = []
-        for definition_node in definition_nodes:
+    ) -> list["TargetTable"]:
+        source_tables: list[TargetTable] = []
+        for assign_node in assign_nodes:
             dependencies: list[DependencyNode] = []
             for dependency_node in dependency_nodes:
                 if isinstance(
                     dependency_node,
                     UnaryDependencyNode,
                 ):
-                    if dependency_node.relation_name == definition_node.name:
+                    if dependency_node.relation_name == assign_node.name:
                         dependencies.append(dependency_node)
                 elif isinstance(dependency_node, BinaryDependencyNode):
                     if (
-                        dependency_node.left_child.name == definition_node.name
-                        or dependency_node.right_child.name == definition_node.name
+                        dependency_node.left_child.name == assign_node.name
+                        or dependency_node.right_child.name == assign_node.name
                     ):
                         dependencies.append(dependency_node)
             source_tables.append(
-                cls(definition_node=definition_node, dependency_nodes=dependencies)
+                cls(assign_node=dependency_node, dependency_nodes=dependencies)
             )
 
         return source_tables
