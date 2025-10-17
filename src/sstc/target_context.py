@@ -3,22 +3,18 @@ from rapt2.treebrd.node import AssignNode, DependencyNode, Node
 from rapt2.treebrd.schema import Schema
 
 from .source_context import SourceContext
+from .target_table import TargetTable
 
 
 class TargetContext:
-    relations: list[AssignNode]
-    dependencies: list[DependencyNode]
+    target_tables: list[TargetTable]
     schema: Schema
 
-    def __init__(self, relations: list[AssignNode], dependencies: list[DependencyNode]):
-        self.relations = relations
-        self.dependencies = dependencies
+    def __init__(self, target_tables: list[TargetTable]):
+        self.target_tables = target_tables
         self.schema = Schema()
-
-        for relation in relations:
-            if relation.name is None:
-                raise ValueError("Relation must have a name")
-            self.schema.add(relation.name, relation.attributes.names)
+        for relation in target_tables:
+            self.schema.add(relation.name, relation.attributes)
 
     @classmethod
     def from_file(cls, file_path: str, source_context: SourceContext):
@@ -35,7 +31,7 @@ class TargetContext:
 
     @classmethod
     def from_syntax_tree(cls, syntax_tree: list[Node]):
-        relations = []
+        relations: list[AssignNode] = []
         dependencies: list[DependencyNode] = []
         for node in syntax_tree:
             if isinstance(node, AssignNode):
@@ -44,4 +40,10 @@ class TargetContext:
                 dependencies.append(node)
             else:
                 raise ValueError(f"Unexpected node type: {type(node)}")
-        return cls(relations=relations, dependencies=dependencies)
+
+        target_tables = TargetTable.from_relations_and_dependencies(
+            nodes=relations,
+            dependency_nodes=dependencies,
+        )
+
+        return cls(target_tables=target_tables)

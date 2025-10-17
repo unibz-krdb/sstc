@@ -26,4 +26,4 @@ def test_source_context_from_file(example_1_dir: str):
         os.path.join(example_1_dir, "target.txt"), source_context=context
     )
     assert isinstance(context, TargetContext)
-    assert len(context.relations) == 8
+    assert len(context.target_tables) == 8
