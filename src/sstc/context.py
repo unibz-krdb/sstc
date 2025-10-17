@@ -1,19 +1,56 @@
-from .source_context import SourceContext
-from .target_context import TargetContext
+from abc import ABC, abstractmethod
+from typing import Generic, Self, TypeVar
+
+from rapt2.treebrd.node import DependencyNode, Node
+from rapt2.treebrd.schema import Schema
+
+from .table import Table
+
+# Generic type for the table class (SourceTable or TargetTable)
+TableType = TypeVar("TableType", bound=Table)
 
 
-class Context:
-    source: SourceContext
-    target: TargetContext
+class Context(ABC, Generic[TableType]):
+    """Generic base class for source and target contexts."""
 
-    def __init__(self, source: SourceContext, target: TargetContext):
-        self.source = source
-        self.target = target
+    tables: list[TableType]
+    schema: Schema
+
+    def __init__(self, tables: list[TableType]):
+        self.tables = tables
+        self.schema = Schema()
+        for table in tables:
+            self.schema.add(table.name, table.attributes)
 
     @classmethod
-    def from_files(cls, source_file_path: str, target_file_path: str):
-        source_context = SourceContext.from_file(source_file_path)
-        target_context = TargetContext.from_file(
-            target_file_path, source_context=source_context
+    @abstractmethod
+    def _get_table_class(cls) -> type[TableType]:
+        """Return the table class to use for creating tables."""
+        pass
+
+    @classmethod
+    @abstractmethod
+    def _is_relation_node(cls, node: Node) -> bool:
+        """Check if a node is a relation node (DefinitionNode or AssignNode)."""
+        pass
+
+    @classmethod
+    def from_syntax_tree(cls, syntax_tree: list[Node]) -> Self:
+        """Create context from a syntax tree."""
+        relations = []
+        dependencies: list[DependencyNode] = []
+        for node in syntax_tree:
+            if cls._is_relation_node(node):
+                relations.append(node)
+            elif isinstance(node, DependencyNode):
+                dependencies.append(node)
+            else:
+                raise ValueError(f"Unexpected node type: {type(node)}")
+
+        table_class = cls._get_table_class()
+        tables = table_class.from_relations_and_dependencies(
+            nodes=relations,
+            dependency_nodes=dependencies,
         )
-        return cls(source=source_context, target=target_context)
+
+        return cls(tables=tables)
