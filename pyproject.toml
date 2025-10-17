@@ -1,11 +1,9 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "sstc"
 version = "0.0.1"
-dependencies = ["rapt2"]
+dependencies = [
+    "rapt2==0.4.2",
+]
 requires-python = ">= 3.13"
 authors = [
     {"name" = "Aidan Bailey", email = "abailey@airu.org.za"}
@@ -21,5 +19,22 @@ classifiers = [
     "License :: OSI Approved :: GNU Lesser General Public License v2 (LGPLv2)",
 ]
 
+[dependency-groups]
+dev = [
+    "debugpy>=1.8.16",
+    "ruff>=0.12.12",
+    "pytest"
+]
+
+[project.scripts]
+sstc = "sstc:main"
+
 [project.urls]
 Repository = "https://github.com/unibz-krdb/sstc"
+
+[tool.uv.sources]
+rapt2 = { path = "../rapt2", editable = true }
+
+[build-system]
+requires = ["uv_build>=0.8.19,<0.9.0"]
+build-backend = "uv_build"
