@@ -1,5 +1,5 @@
 from rapt2.rapt import Rapt
-from rapt2.treebrd.node import AssignNode, DefinitionNode, DependencyNode, Node
+from rapt2.treebrd.node import AssignNode, DependencyNode, Node
 from rapt2.treebrd.schema import Schema
 
 from .source_context import SourceContext
