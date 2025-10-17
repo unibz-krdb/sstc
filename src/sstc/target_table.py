@@ -1,33 +1,24 @@
-from rapt2.treebrd.node import (
-    AssignNode,
-    BinaryDependencyNode,
-    DefinitionNode,
-    DependencyNode,
-    FunctionalDependencyNode,
-    MultivaluedDependencyNode,
-    PrimaryKeyNode,
-    UnaryDependencyNode,
-)
+from rapt2.treebrd.node import AssignNode, DependencyNode
+
+from .table import Table
 
 
-class TargetTable:
+class TargetTable(Table[AssignNode]):
+    """Target table with an AssignNode."""
 
-    assign_node: AssignNode
-    dependency_nodes: list[DependencyNode]
-
-    def __init__(self, assign_node: AssignNode, dependency_nodes: list[DependencyNode]):
-        if assign_node.name is None:
-            raise ValueError("DefinitionNode must have a name")
-        self.assign_node = assign_node
-        self.dependency_nodes = dependency_nodes
-
-    @property
-    def name(self) -> str:
-        return self.assign_node.name
-
-    @property
-    def attributes(self) -> list[str]:
-        return self.assign_node.attributes.names
+    def __init__(
+        self,
+        assign_node: AssignNode | None = None,
+        dependency_nodes: list[DependencyNode] | None = None,
+        node: AssignNode | None = None,
+    ):
+        # Accept both 'assign_node' and 'node' for backward compatibility
+        if assign_node is None and node is None:
+            raise ValueError("Either 'assign_node' or 'node' must be provided")
+        if dependency_nodes is None:
+            raise ValueError("'dependency_nodes' must be provided")
+        actual_node = assign_node if assign_node is not None else node
+        super().__init__(node=actual_node, dependency_nodes=dependency_nodes)
 
     @classmethod
     def from_relations_and_dependencies(
@@ -35,24 +26,7 @@ class TargetTable:
         assign_nodes: list[AssignNode],
         dependency_nodes: list[DependencyNode],
     ) -> list["TargetTable"]:
-        source_tables: list[TargetTable] = []
-        for assign_node in assign_nodes:
-            dependencies: list[DependencyNode] = []
-            for dependency_node in dependency_nodes:
-                if isinstance(
-                    dependency_node,
-                    UnaryDependencyNode,
-                ):
-                    if dependency_node.relation_name == assign_node.name:
-                        dependencies.append(dependency_node)
-                elif isinstance(dependency_node, BinaryDependencyNode):
-                    if (
-                        dependency_node.left_child.name == assign_node.name
-                        or dependency_node.right_child.name == assign_node.name
-                    ):
-                        dependencies.append(dependency_node)
-            source_tables.append(
-                cls(assign_node=dependency_node, dependency_nodes=dependencies)
-            )
-
-        return source_tables
+        """Create target tables from assign nodes and dependency nodes."""
+        return super().from_relations_and_dependencies(
+            nodes=assign_nodes, dependency_nodes=dependency_nodes
+        )
