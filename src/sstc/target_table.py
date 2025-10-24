@@ -1,10 +1,13 @@
-from rapt2.treebrd.node import AssignNode
+from rapt2.rapt import sql_translator
 
+from .definition import TargetDefinition
 from .table import Table
 
 
-class TargetTable(Table[AssignNode]):
+class TargetTable(Table[TargetDefinition]):
     """Target table with an AssignNode."""
 
     def create_stmt(self) -> str:
-        return super().create_stmt().replace("TEMPORARY TABLE", "TABLE")
+        return sql_translator.translate(
+            root_list=[self.definition], use_bag_semantics=True
+        )[0].replace("TEMPORARY TABLE", "TABLE")
