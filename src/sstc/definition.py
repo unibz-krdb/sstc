@@ -1,5 +1,6 @@
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from dataclasses import dataclass
+from dataclasses_json import DataClassJsonMixin, dataclass_json
 
 from rapt2.treebrd.node import AssignNode
 
@@ -37,18 +38,27 @@ class TargetDefinition(Definition):
 
 
 @dataclass
+class AttributeSchema(DataClassJsonMixin):
+    name: str
+    data_type: str
+    is_nullable: bool
+
+
+@dataclass
+class TableSchema(DataClassJsonMixin):
+    name: str
+    attributes: list[AttributeSchema]
+
+
+@dataclass
 class SourceDefinition(Definition):
 
-    schema: dict
+    schema: TableSchema
 
     @property
     def name(self) -> str:
-        if "name" not in self.schema:
-            raise ValueError("Schema must have a name")
-        return self.schema["name"]
+        return self.schema.name
 
     @property
     def attributes(self) -> list[str]:
-        if "attributes" not in self.schema:
-            raise ValueError("Schema must have attributes")
-        return [attribute["name"] for attribute in self.schema["attributes"]]
+        return [attribute.name for attribute in self.schema.attributes]

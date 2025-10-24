@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from typing import Generic, Self, TypeVar
 
 from rapt2.rapt import sql_translator
@@ -57,7 +58,6 @@ class Table(Generic[DefinitionType]):
 
         return tables
 
+    @abstractmethod
     def create_stmt(self) -> str:
-        return sql_translator.translate(
-            root_list=[self.definition], use_bag_semantics=True
-        )[0]
+        raise NotImplementedError

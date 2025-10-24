@@ -4,7 +4,7 @@ from typing import Self
 from rapt2.rapt import Rapt
 from rapt2.treebrd.node import DependencyNode
 
-from sstc.definition import SourceDefinition
+from sstc.definition import SourceDefinition, TableSchema
 
 from .context import Context
 from .source_table import SourceTable
@@ -22,7 +22,9 @@ class SourceContext(Context[SourceTable]):
             table_name = table_schema["name"]
             attributes = [attr["name"] for attr in table_schema["attributes"]]
             schema[table_name] = attributes
-            source_definitions.append(SourceDefinition(schema=table_schema))
+            source_definitions.append(
+                SourceDefinition(schema=TableSchema.from_dict(table_schema))
+            )
 
         with open(constraints_path, "r") as file:
             content = file.read()
