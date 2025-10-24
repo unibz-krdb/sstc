@@ -110,7 +110,7 @@ wheels = [
 
 [[package]]
 name = "rapt2"
-version = "0.4.2"
+version = "0.4.3"
 source = { editable = "../rapt2" }
 dependencies = [
     { name = "psycopg2-binary" },

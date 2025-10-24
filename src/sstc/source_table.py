@@ -1,9 +1,8 @@
-from rapt2.treebrd.node import DefinitionNode
-
+from sstc.definition import SourceDefinition
 from .table import Table
 
 
-class SourceTable(Table[DefinitionNode]):
+class SourceTable(Table[SourceDefinition]):
     """Source table with a DefinitionNode."""
 
     pass

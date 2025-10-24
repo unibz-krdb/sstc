@@ -1,31 +1,43 @@
+import json
+from typing import Self
+
 from rapt2.rapt import Rapt
-from rapt2.treebrd.node import DefinitionNode, Node
+from rapt2.treebrd.node import DependencyNode
+
+from sstc.definition import SourceDefinition
 
 from .context import Context
 from .source_table import SourceTable
 
 
 class SourceContext(Context[SourceTable]):
-    @property
-    def source_tables(self) -> list[SourceTable]:
-        """Alias for tables property for backward compatibility."""
-        return self.tables
-
     @classmethod
-    def _get_table_class(cls) -> type[SourceTable]:
-        return SourceTable
+    def from_file(cls, schema_path: str, constraints_path: str) -> Self:
+        schema = {}
+        with open(schema_path, "r") as file:
+            rich_schema = json.load(file)
 
-    @classmethod
-    def _is_relation_node(cls, node: Node) -> bool:
-        return isinstance(node, DefinitionNode)
+        source_definitions: list[SourceDefinition] = []
+        for table_schema in rich_schema["tables"]:
+            table_name = table_schema["name"]
+            attributes = [attr["name"] for attr in table_schema["attributes"]]
+            schema[table_name] = attributes
+            source_definitions.append(SourceDefinition(schema=table_schema))
 
-    @classmethod
-    def from_file(cls, file_path: str):
-        with open(file_path, "r") as file:
+        with open(constraints_path, "r") as file:
             content = file.read()
-        return cls.from_string(instring=content)
 
-    @classmethod
-    def from_string(cls, instring: str):
-        syntax_tree = Rapt(grammar="Dependency Grammar").to_syntax_tree(instring)
-        return cls.from_syntax_tree(syntax_tree=syntax_tree)
+        dependencies = [
+            node
+            for node in Rapt(grammar="Dependency Grammar").to_syntax_tree(
+                instring=content, schema=schema
+            )
+            if isinstance(node, DependencyNode)
+        ]
+
+        tables = SourceTable.from_relations_and_dependencies(
+            definitions=source_definitions,
+            dependency_nodes=dependencies,
+        )
+
+        return cls(tables=tables)

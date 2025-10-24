@@ -1,0 +1,49 @@
+{
+    "tables": [
+        {
+            "name": "Person_URA",
+            "attributes": [
+                {
+                    "name": "ssn",
+                    "type": "VARCHAR(100)",
+                    "nullable": true
+                },
+                {
+                    "name": "empid",
+                    "type": "VARCHAR(100)",
+                    "nullable": true
+                },
+                {
+                    "name": "name",
+                    "type": "VARCHAR(100)",
+                    "nullable": true
+                },
+                {
+                    "name": "hdate",
+                    "type": "VARCHAR(100)",
+                    "nullable": true
+                },
+                {
+                    "name": "phone",
+                    "type": "VARCHAR(100)",
+                    "nullable": true
+                },
+                {
+                    "name": "email",
+                    "type": "VARCHAR(100)",
+                    "nullable": true
+                },
+                {
+                    "name": "dept",
+                    "type": "VARCHAR(100)",
+                    "nullable": true
+                },
+                {
+                    "name": "manager",
+                    "type": "VARCHAR(100)",
+                    "nullable": true
+                }
+            ]
+        }
+    ]
+}

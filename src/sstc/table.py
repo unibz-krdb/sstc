@@ -4,58 +4,60 @@ from rapt2.rapt import sql_translator
 from rapt2.treebrd.node import (
     AssignNode,
     BinaryDependencyNode,
-    DefinitionNode,
     DependencyNode,
     UnaryDependencyNode,
 )
+from .definition import Definition
 
 # Generic type for the node that can be either DefinitionNode or AssignNode
-NodeType = TypeVar("NodeType", DefinitionNode, AssignNode)
+DefinitionType = TypeVar("DefinitionType", bound=Definition)
 
 
-class Table(Generic[NodeType]):
+class Table(Generic[DefinitionType]):
     """Generic base class for source and target tables."""
 
-    node: NodeType
+    definition: DefinitionType
     dependency_nodes: list[DependencyNode]
 
-    def __init__(self, node: NodeType, dependency_nodes: list[DependencyNode]):
+    def __init__(self, node: DefinitionType, dependency_nodes: list[DependencyNode]):
         if node.name is None:
             raise ValueError("Node must have a name")
-        self.node = node
+        self.definition = node
         self.dependency_nodes = dependency_nodes
 
     @property
     def name(self) -> str:
-        return self.node.name
+        return self.definition.name
 
     @property
     def attributes(self) -> list[str]:
-        return self.node.attributes.names
+        return self.definition.attributes
 
     @classmethod
     def from_relations_and_dependencies(
         cls,
-        nodes: list[NodeType],
+        definitions: list[DefinitionType],
         dependency_nodes: list[DependencyNode],
     ) -> list[Self]:
         """Create tables from a list of relation nodes and dependency nodes."""
         tables: list[Self] = []
-        for node in nodes:
+        for definition in definitions:
             dependencies: list[DependencyNode] = []
             for dependency_node in dependency_nodes:
                 if isinstance(dependency_node, UnaryDependencyNode):
-                    if dependency_node.relation_name == node.name:
+                    if dependency_node.relation_name == definition.name:
                         dependencies.append(dependency_node)
                 elif isinstance(dependency_node, BinaryDependencyNode):
                     if (
-                        dependency_node.left_child.name == node.name
-                        or dependency_node.right_child.name == node.name
+                        dependency_node.left_child.name == definition.name
+                        or dependency_node.right_child.name == definition.name
                     ):
                         dependencies.append(dependency_node)
-            tables.append(cls(node=node, dependency_nodes=dependencies))
+            tables.append(cls(node=definition, dependency_nodes=dependencies))
 
         return tables
 
     def create_stmt(self) -> str:
-        return sql_translator.translate(root_list=[self.node], use_bag_semantics=True)[0]
+        return sql_translator.translate(
+            root_list=[self.definition], use_bag_semantics=True
+        )[0]
