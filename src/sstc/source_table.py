@@ -1,4 +1,5 @@
 from sstc.definition import SourceDefinition
+
 from .table import Table
 
 

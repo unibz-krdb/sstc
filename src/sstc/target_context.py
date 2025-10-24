@@ -1,7 +1,7 @@
 from typing import Self
 
 from rapt2.rapt import Rapt
-from rapt2.treebrd.node import AssignNode, DependencyNode, RelationNode
+from rapt2.treebrd.node import AssignNode, DependencyNode
 
 from .context import Context
 from .source_context import SourceContext

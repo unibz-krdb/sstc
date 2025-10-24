@@ -1,13 +1,9 @@
 from abc import abstractmethod
 from typing import Generic, Self, TypeVar
 
-from rapt2.rapt import sql_translator
-from rapt2.treebrd.node import (
-    AssignNode,
-    BinaryDependencyNode,
-    DependencyNode,
-    UnaryDependencyNode,
-)
+from rapt2.treebrd.node import (BinaryDependencyNode, DependencyNode,
+                                UnaryDependencyNode)
+
 from .definition import Definition
 
 # Generic type for the node that can be either DefinitionNode or AssignNode

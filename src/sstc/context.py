@@ -1,7 +1,6 @@
-from abc import ABC, abstractmethod
-from typing import Generic, Self, TypeVar
+from abc import ABC
+from typing import Generic, TypeVar
 
-from rapt2.treebrd.node import DependencyNode, Node
 from rapt2.treebrd.schema import Schema
 
 from .table import Table
