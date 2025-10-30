@@ -59,10 +59,39 @@ class Table(Generic[DefinitionType]):
 
     def create_insert_table(self) -> str:
         return "\n".join(
-            f"CREATE TABLE {self.name}_INSERT AS"
-            f"SELECT * FROM {self.name}"
-            "WHERE 1<>1;"
+            (
+                f"CREATE TABLE {self.name}_INSERT AS"
+                f"SELECT * FROM {self.name}"
+                "WHERE 1<>1;"
+            )
         )
 
     def create_insert_join_table(self) -> str:
         return self.create_insert_table().replace("INSERT", "INSERT_JOIN")
+
+    def insert_function(self) -> str:
+        return "\n".join(
+            (
+                f"CREATE OR REPLACE FUNCTION {self.name}_INSERT_fn()",
+                "   RETURNS TRIGGER LANGUAGE PLPGSQL AS $$",
+                "   BEGIN",
+                f"   RAISE NOTICE 'Function {self.name}_INSERT_fn called';",
+                "   IF EXISTS (SELECT * FROM _loop where loop_start = -1) THEN",
+                "      RETURN NULL;",
+                "   ELSE",
+                f"      INSERT INTO {self.name}_INSERT VALUES({', '.join(f'new.{attr}' for attr in self.attributes)});",
+                "      RETURN NEW;",
+                "   END IF;",
+                "END;  $$",
+            )
+        )
+
+    def insert_trigger(self) -> str:
+        return "\n".join(
+            (
+                f"CREATE TRIGGER {self.name}_INSERT_trigger",
+                f"AFTER INSERT ON {self.name}",
+                "FOR EACH ROW",
+                f"EXECUTE FUNCTION {self.name}_INSERT_fn();",
+            )
+        )
