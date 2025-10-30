@@ -57,7 +57,7 @@ class Table(Generic[DefinitionType]):
     def create_stmt(self) -> str:
         raise NotImplementedError
 
-    def create_insert_table(self) -> str:
+    def gen_insert_table_create(self) -> str:
         return "\n".join(
             (
                 f"CREATE TABLE {self.name}_INSERT AS"
@@ -66,10 +66,10 @@ class Table(Generic[DefinitionType]):
             )
         )
 
-    def create_insert_join_table(self) -> str:
-        return self.create_insert_table().replace("INSERT", "INSERT_JOIN")
+    def gen_insert_join_table_create(self) -> str:
+        return self.gen_insert_table_create().replace("INSERT", "INSERT_JOIN")
 
-    def insert_function(self) -> str:
+    def gen_insert_function(self) -> str:
         return "\n".join(
             (
                 f"CREATE OR REPLACE FUNCTION {self.name}_INSERT_fn()",
@@ -86,7 +86,7 @@ class Table(Generic[DefinitionType]):
             )
         )
 
-    def insert_trigger(self) -> str:
+    def gen_insert_trigger(self) -> str:
         return "\n".join(
             (
                 f"CREATE TRIGGER {self.name}_INSERT_trigger",
