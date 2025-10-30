@@ -1,8 +1,7 @@
 from abc import abstractmethod
 from typing import Generic, Self, TypeVar
 
-from rapt2.treebrd.node import (BinaryDependencyNode, DependencyNode,
-                                UnaryDependencyNode)
+from rapt2.treebrd.node import BinaryDependencyNode, DependencyNode, UnaryDependencyNode
 
 from .definition import Definition
 
@@ -57,3 +56,13 @@ class Table(Generic[DefinitionType]):
     @abstractmethod
     def create_stmt(self) -> str:
         raise NotImplementedError
+
+    def create_insert_table(self) -> str:
+        return "\n".join(
+            f"CREATE TABLE {self.name}_INSERT AS"
+            f"SELECT * FROM {self.name}"
+            "WHERE 1<>1;"
+        )
+
+    def create_insert_join_table(self) -> str:
+        return self.create_insert_table().replace("INSERT", "INSERT_JOIN")
