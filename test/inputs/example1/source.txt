@@ -1,0 +1,10 @@
+Person_Source := \project_{ssn, empid, name, hdate, phone, email, dept, manager} Universal;
+pk_{ssn} Person_Source;
+mvd_{ssn, phone} Person_Source;
+mvd_{ssn, email} Person_Source;
+fd_{empid, hdate} \select_{defined(empid) and defined(hdate)} Person_Source;
+fd_{empid, dept} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_Source;
+fd_{dept, manager} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_Source;
+inc⊆_{manager, empid} (Person_Source, Person_Source);
+
+UniversalMapping := \project_{ssn, empid, name, hdate, phone, email, dept, manager} Person_Source;

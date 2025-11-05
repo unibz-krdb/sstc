@@ -12,8 +12,8 @@ class Transducer:
     ):
         return cls(
             TransducerContext.from_files(
-                source_schema_path=source_schema_path,
-                source_constraints_path=source_constraints_path,
+                universal_path=source_schema_path,
+                source_path=source_constraints_path,
                 target_path=target_path,
             )
         )

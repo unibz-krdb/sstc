@@ -1,25 +1,25 @@
-Person := \project_{ssn, name} Person_URA;
+Person := \project_{ssn, name} Universal;
 pk_{ssn} Person;
 
-PersonPhone := \project_{ssn, phone} Person_URA;
+PersonPhone := \project_{ssn, phone} Universal;
 pk_{ssn, phone} PersonPhone;
 
-PersonEmail := \project_{ssn, email} Person_URA;
+PersonEmail := \project_{ssn, email} Universal;
 pk_{ssn, email} PersonEmail;
 
-Employee := \project_{ssn, empid} \select_{defined(empid) and defined(hdate)} Person_URA;
+Employee := \project_{ssn, empid} \select_{defined(empid) and defined(hdate)} Universal;
 pk_{empid} Employee;
 
-EmployeeDate := \project_{empid, hdate} \select_{defined(empid) and defined(hdate)} Person_URA;
+EmployeeDate := \project_{empid, hdate} \select_{defined(empid) and defined(hdate)} Universal;
 pk_{empid} EmployeeDate;
 
-PED := \project_{ssn, empid} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
+PED := \project_{ssn, empid} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Universal;
 pk_{empid} PED;
 
-PEDDept := \project_{empid, dept} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
+PEDDept := \project_{empid, dept} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Universal;
 pk_{empid} PEDDept;
 
-DeptManager := \project_{dept, manager} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
+DeptManager := \project_{dept, manager} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Universal;
 pk_{dept} Dept_Manager;
 
 inc=_{ssn, ssn} (Person, PersonPhone);
@@ -31,3 +31,5 @@ inc=_{dept, dept} (PEDDept, DeptManager);
 inc⊆_{ssn, ssn} (Employee, Person);
 inc⊆_{empid, empid} (PED, Employee);
 inc⊆_{manager, empid} (DeptManager, Employee);
+
+UniversalMapping := \project_{ssn, empid, name, hdate, phone, email, dept, manager} (Person \natural_join PersonPhone \natural_join PersonEmail \natural_join Employee \natural_join EmployeeDate \natural_join PED \natural_join PEDDept \natural_join DeptManager);

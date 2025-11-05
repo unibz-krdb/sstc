@@ -1,7 +1,0 @@
-pk_{ssn} Person_URA;
-mvd_{ssn, phone} Person_URA;
-mvd_{ssn, email} Person_URA;
-fd_{empid, hdate} \select_{defined(empid) and defined(hdate)} Person_URA;
-fd_{empid, dept} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
-fd_{dept, manager} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Person_URA;
-inc⊆_{manager, empid} (Person_URA, Person_URA);
