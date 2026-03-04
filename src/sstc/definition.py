@@ -7,7 +7,6 @@ from rapt2.treebrd.node import AssignNode
 
 @dataclass
 class Definition(ABC):
-
     @property
     @abstractmethod
     def name(self) -> str:
@@ -23,7 +22,6 @@ class Definition(ABC):
 
 @dataclass
 class TargetDefinition(Definition):
-
     node: AssignNode
 
     @property
@@ -52,7 +50,6 @@ class TableSchema(DataClassJsonMixin):
 
 @dataclass
 class SourceDefinition(Definition):
-
     schema: TableSchema
 
     @property
