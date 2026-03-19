@@ -144,7 +144,7 @@ wheels = [
 
 [[package]]
 name = "rapt2"
-version = "0.4.3"
+version = "0.5.0"
 source = { editable = "../rapt2" }
 dependencies = [
     { name = "psycopg2-binary" },
@@ -161,6 +161,7 @@ requires-dist = [
 dev = [
     { name = "debugpy", specifier = ">=1.8.16" },
     { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.12.12" },
 ]
 
