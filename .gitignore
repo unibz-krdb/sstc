@@ -163,3 +163,5 @@ cython_debug/
 
 !test/resources/**
 .DS_Store
+# claude-squad local data
+.claude-squad/
