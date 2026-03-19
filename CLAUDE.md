@@ -1,12 +1,12 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
 SSTC (Semantic SQL Transducer Compiler) compiles relational algebra definitions into PostgreSQL SQL. It parses source/target context definitions (relational algebra) against a universal schema (JSON) using RAPT2, then generates CREATE statements, INSERT tracking tables, trigger functions, and universal mappings.
 
 ## Commands
+
+Requires Python >= 3.13.
 
 ```bash
 uv sync                                         # Install dependencies
@@ -33,12 +33,18 @@ uv run ruff format .                            # Format
 
 - Factory class methods (`from_file`, `from_relations_and_dependencies`) create instances from parsed external data
 - RAPT2 node types: `AssignNode` (table definitions), `UnaryDependencyNode`/`BinaryDependencyNode` (constraints like PK, FD, INC, MVD)
-- Table names in input must be fully qualified: `{schema}.{tablename}`
+- Table names in input use plain names (e.g. `Person_Source`, `PersonPhone`); RAPT2 lowercases them
 - The reserved name `UniversalMapping` in relational algebra files defines the universal-to-context mapping
 
 ### Key dependency
 
 `rapt2` is installed as an editable dependency from sibling directory `../rapt2`. It must be present for the project to build.
+
+### Gotchas
+
+- Generated insert functions reference a `_loop` table (for cycle detection) — this table must exist in the target database
+- Tests use `test/fixtures.py` with direct import, not `conftest.py`
+- Tests must be run from the project root (fixture paths are relative)
 
 ## Input format
 
