@@ -1,0 +1,28 @@
+CREATE OR REPLACE FUNCTION {{ schema }}.{{ direction }}_{{ table_name }}_{{ suffix }}_JOIN_fn()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+    CREATE TEMPORARY TABLE temp_table(
+{% for col in universal_columns %}
+        {{ col.name }} {{ col.data_type }}{% if not loop.last %},{% endif %}
+
+{% endfor %}
+    );
+
+    INSERT INTO temp_table (
+        SELECT {{ universal_col_names | join(', ') }}
+        FROM {{ schema }}._{{ table_name }}_{{ suffix }}
+{% for other_table in other_tables %}
+        NATURAL LEFT OUTER JOIN {{ schema }}._{{ other_table }}
+{% endfor %}
+    );
+
+{% for tbl in all_tables %}
+    INSERT INTO {{ schema }}._{{ tbl.name }}_{{ suffix }}_JOIN (SELECT {{ tbl.attrs | join(', ') }} FROM temp_table);
+{% endfor %}
+    INSERT INTO {{ schema }}._loop VALUES ({{ loop_value }});
+
+    DELETE FROM temp_table;
+    DROP TABLE temp_table;
+    RETURN NEW;
+END;
+$$;

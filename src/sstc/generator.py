@@ -29,12 +29,20 @@ class Generator:
             lstrip_blocks=True,
         )
 
+    def _universal_columns(self) -> list[dict]:
+        schema = self.ctx.source.tables[0].universal_schema
+        return [{"name": a.name, "data_type": a.data_type} for a in schema]
+
+    def _universal_col_names(self) -> list[str]:
+        return [c["name"] for c in self._universal_columns()]
+
     def compile(self) -> str:
         sections = [
             self._preamble(),
             self._base_tables(),
             self._constraints(),
             self._tracking(),
+            self._join(),
         ]
         return "\n\n".join(s for s in sections if s)
 
@@ -250,6 +258,57 @@ class Generator:
                             table_name=table.name,
                             suffix=suffix,
                             event=event,
+                        )
+                    )
+        return "\n\n".join(parts)
+
+    def _join(self) -> str:
+        parts = []
+        universal_columns = self._universal_columns()
+        universal_col_names = self._universal_col_names()
+
+        for context in [self.ctx.source, self.ctx.target]:
+            direction = context.direction
+            # Source inserts +1 to loop, target inserts -1
+            loop_value = 1 if direction == "source" else -1
+
+            all_tables_info = [
+                {"name": t.name, "attrs": t.attributes} for t in context.tables
+            ]
+
+            for table in context.tables:
+                other_tables = [t.name for t in context.tables if t.name != table.name]
+
+                for suffix in ["INSERT", "DELETE"]:
+                    # JOIN staging table (empty clone of base table)
+                    parts.append(
+                        self._render(
+                            "tracking_table.sql.j2",
+                            table_name=table.name,
+                            suffix=f"{suffix}_JOIN",
+                        )
+                    )
+                    # JOIN function
+                    parts.append(
+                        self._render(
+                            "join_function.sql.j2",
+                            direction=direction,
+                            table_name=table.name,
+                            suffix=suffix,
+                            universal_columns=universal_columns,
+                            universal_col_names=universal_col_names,
+                            other_tables=other_tables,
+                            all_tables=all_tables_info,
+                            loop_value=loop_value,
+                        )
+                    )
+                    # JOIN trigger (fires on INSERT into _TABLE_INSERT/DELETE)
+                    parts.append(
+                        self._render(
+                            "join_trigger.sql.j2",
+                            direction=direction,
+                            table_name=table.name,
+                            suffix=suffix,
                         )
                     )
         return "\n\n".join(parts)

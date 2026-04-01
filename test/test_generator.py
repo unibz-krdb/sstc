@@ -128,3 +128,32 @@ def test_tracking_layer(example_1_dir: str):
     assert "_person_source_INSERT" in result
     assert "_person_source_DELETE" in result
     assert "_person_INSERT" in result
+
+
+def test_join_layer(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._join()
+
+    # 9 tables × 2 (INSERT_JOIN + DELETE_JOIN) = 18 staging tables
+    assert result.count("CREATE TABLE") == 18
+
+    # 9 × 2 = 18 join functions
+    assert result.count("CREATE OR REPLACE FUNCTION") == 18
+
+    # 9 × 2 = 18 join triggers
+    assert result.count("CREATE TRIGGER") == 18
+
+    # Source functions insert VALUES (1), target insert VALUES (-1)
+    assert "VALUES (1)" in result
+    assert "VALUES (-1)" in result
+
+    # NATURAL LEFT OUTER JOIN used
+    assert "NATURAL LEFT OUTER JOIN" in result
+
+    # Temp table created with universal columns
+    assert "CREATE TEMPORARY TABLE" in result
