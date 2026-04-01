@@ -25,9 +25,11 @@ uv run ruff format .                            # Format
 
 - **`context.py`** — `Context.from_file(universal_path, context_path)` parses relational algebra via `Rapt(grammar="Dependency Grammar")`, separating results into `AssignNode`s (table definitions), `DependencyNode`s (constraints), and a special `UniversalMapping` assignment. Builds `Table` instances and a RAPT2 `Schema`.
 - **`table.py`** — `Table` wraps an `AssignNode` with its associated dependency nodes. Generates SQL via `gen_concrete_create_stmt()` (typed columns from universal schema), `gen_universal_create_stmt()` (via RAPT2's `sql_translator.translate()`), and insert tracking infrastructure (`gen_insert_table_create`, `gen_insert_function`, `gen_insert_trigger`).
-- **`definition.py`** — Abstract `Definition` base with `TargetDefinition` (wraps `AssignNode`) and `SourceDefinition` (wraps `TableSchema`). `AttributeSchema` and `TableSchema` are `DataClassJsonMixin` dataclasses for JSON deserialization.
+- **`definition.py`** — `AttributeSchema` and `TableSchema` are `DataClassJsonMixin` dataclasses for JSON deserialization (used by `context.py` and `table.py`). Also defines `TargetDefinition`/`SourceDefinition` abstractions, but these are currently unused by the pipeline.
 - **`transducer_context.py`** — `TransducerContext` holds source and target `Context` instances, created via `from_files()`.
 - **`transducer.py`** — `Transducer` entry point; `compile()` is not yet implemented.
+- **`__init__.py`** — Public API exports: `Context`, `Transducer`, `TransducerContext`.
+- **`__main__.py`** — CLI entry point (stub — just prints "Hello, World!"). Mapped to `sstc` command via `pyproject.toml` scripts.
 
 ### Key patterns
 
@@ -43,6 +45,7 @@ uv run ruff format .                            # Format
 ### Gotchas
 
 - Generated insert functions reference a `_loop` table (for cycle detection) — this table must exist in the target database
+- `gen_universal_create_stmt()` uses `use_bag_semantics=True` and `.replace("TEMPORARY TABLE", "TABLE")` — workaround because RAPT2's translator generates `CREATE TEMPORARY TABLE` by default
 - Tests use `test/fixtures.py` with direct import, not `conftest.py`
 - Tests must be run from the project root (fixture paths are relative)
 
@@ -52,3 +55,9 @@ uv run ruff format .                            # Format
 - **Context definitions**: Relational algebra text files using RAPT2 syntax with operators like `\project_{}`, `\select_{}`, `\natural_join`, and constraint declarations (`pk_{}`, `fd_{}`, `mvd_{}`, `inc=_{}`, `inc⊆_{}`)
 
 See `test/inputs/example1/` for working examples.
+
+## Reference materials
+
+- **`docs/notes/`** — Design documentation: architecture layers, constraint theory (FDs, MVDs, guards, CJDs), SQL generation strategy (insert/delete chains, mapping functions), and a worked example with reference SQL output
+- **`docs/papers/`** — Research paper the compiler is based on
+- **`notes/`** — Reference SQL scripts (`desired_output.sql`, `full_script_v5_tabletemp.sql`) showing the target output the compiler should produce
