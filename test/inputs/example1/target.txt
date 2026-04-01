@@ -20,7 +20,7 @@ PEDDept := \project_{empid, dept} \select_{defined(empid) and defined(hdate) and
 pk_{empid} PEDDept;
 
 DeptManager := \project_{dept, manager} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Universal;
-pk_{dept} Dept_Manager;
+pk_{dept} DeptManager;
 
 inc=_{ssn, ssn} (Person, PersonPhone);
 inc=_{ssn, ssn} (Person, PersonEmail);

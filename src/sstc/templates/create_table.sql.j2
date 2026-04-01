@@ -1,7 +1,6 @@
 CREATE TABLE {{ schema }}._{{ table_name }} (
 {% for col in columns %}
     {{ col.name }} {{ col.data_type }}{% if not col.is_nullable %} NOT NULL{% endif %}{% if not loop.last or pk_columns %},{% endif %}
-
 {% endfor %}
 {% if pk_columns %}
     PRIMARY KEY ({{ pk_columns | join(', ') }})

@@ -4,10 +4,7 @@ from fixtures import example_1_dir as example_1_dir
 
 from rapt2.treebrd.node import (
     FunctionalDependencyNode,
-    InclusionEquivalenceNode,
-    InclusionSubsumptionNode,
     MultivaluedDependencyNode,
-    PrimaryKeyNode,
 )
 
 from sstc import TransducerContext

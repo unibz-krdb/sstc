@@ -80,7 +80,8 @@ class Generator:
 
         parts = []
         for table_name, table_mvds in mvds_by_table.items():
-            # Verify shared LHS
+            # RAPT2 convention: mvd_{a, b} stores attributes as [a, b]
+            # where attrs[:-1] = LHS determinant, attrs[-1:] = determined attribute
             lhs_set = {tuple(list(m.attributes)[:-1]) for m in table_mvds}
             if len(lhs_set) > 1:
                 raise UnsupportedError(
