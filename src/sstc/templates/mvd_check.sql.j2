@@ -1,0 +1,23 @@
+CREATE OR REPLACE FUNCTION {{ schema }}.check_{{ table_name }}_mvd_check_fn()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+    IF EXISTS (SELECT DISTINCT {{ select_cols }}
+        FROM {{ schema }}._{{ table_name }} AS r1,
+        (SELECT {{ new_cols }}) AS r2
+        WHERE {{ join_condition }}
+        EXCEPT
+        SELECT *
+        FROM {{ schema }}._{{ table_name }}
+    ) THEN
+        RAISE EXCEPTION 'MVD constraint violation on {{ table_name }}';
+        RETURN NULL;
+    ELSE
+        RETURN NEW;
+    END IF;
+END;
+$$;
+
+CREATE TRIGGER {{ table_name }}_mvd_check_trigger
+BEFORE INSERT ON {{ schema }}._{{ table_name }}
+FOR EACH ROW
+EXECUTE FUNCTION {{ schema }}.check_{{ table_name }}_mvd_check_fn();

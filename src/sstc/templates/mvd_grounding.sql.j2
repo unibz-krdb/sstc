@@ -1,0 +1,39 @@
+CREATE OR REPLACE FUNCTION {{ schema }}.check_{{ table_name }}_mvd_grounding_fn()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+    IF EXISTS (
+{% for union_select in union_selects %}
+        SELECT {{ union_select.cols }}
+        FROM {{ schema }}._{{ table_name }} AS r1
+        WHERE {{ join_condition }}
+{% if not loop.last %}
+        UNION
+{% endif %}
+{% endfor %}
+        EXCEPT
+        (SELECT * FROM {{ schema }}._{{ table_name }})
+    ) THEN
+        RAISE NOTICE 'MVD grounding: tuple % leads to additional tuples', NEW;
+        INSERT INTO {{ schema }}._{{ table_name }} (
+{% for union_select in union_selects %}
+            SELECT {{ union_select.cols }}
+            FROM {{ schema }}._{{ table_name }} AS r1
+            WHERE {{ join_condition }}
+{% if not loop.last %}
+            UNION
+{% endif %}
+{% endfor %}
+            EXCEPT
+            (SELECT * FROM {{ schema }}._{{ table_name }})
+        );
+        RETURN NEW;
+    ELSE
+        RETURN NEW;
+    END IF;
+END;
+$$;
+
+CREATE TRIGGER {{ table_name }}_mvd_grounding_trigger
+AFTER INSERT ON {{ schema }}._{{ table_name }}
+FOR EACH ROW
+EXECUTE FUNCTION {{ schema }}.check_{{ table_name }}_mvd_grounding_fn();

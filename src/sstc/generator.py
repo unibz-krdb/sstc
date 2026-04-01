@@ -7,6 +7,10 @@ from .table import Table
 from .transducer_context import TransducerContext
 
 
+class UnsupportedError(Exception):
+    pass
+
+
 class Generator:
     def __init__(self, ctx: TransducerContext, schema: str = "transducer"):
         self.ctx = ctx
@@ -22,6 +26,7 @@ class Generator:
         sections = [
             self._preamble(),
             self._base_tables(),
+            self._constraints(),
         ]
         return "\n\n".join(s for s in sections if s)
 
@@ -62,3 +67,82 @@ class Generator:
             for table in context.tables:
                 parts.append(self._create_table(table, context))
         return "\n".join(parts)
+
+    def _mvd_sql(self, context: Context) -> str:
+        mvds = context.multivalued_dependencies
+        if not mvds:
+            return ""
+
+        # Group MVDs by table name
+        mvds_by_table: dict[str, list] = {}
+        for mvd in mvds:
+            mvds_by_table.setdefault(mvd.relation_name, []).append(mvd)
+
+        parts = []
+        for table_name, table_mvds in mvds_by_table.items():
+            # Verify shared LHS
+            lhs_set = {tuple(list(m.attributes)[:-1]) for m in table_mvds}
+            if len(lhs_set) > 1:
+                raise UnsupportedError(
+                    f"Non-shared-LHS MVDs on {table_name}: {lhs_set}"
+                )
+            lhs_attrs = list(lhs_set.pop())
+            determined_attrs = [list(m.attributes)[-1] for m in table_mvds]
+
+            # Find table object for attribute list
+            table = self._find_table(table_name, context)
+            all_attrs = table.attributes
+
+            # MVD check: r1 for LHS+determined, r2 for rest
+            lhs_and_determined = set(lhs_attrs) | set(determined_attrs)
+            select_cols = ", ".join(
+                f"r1.{a}" if a in lhs_and_determined else f"r2.{a}" for a in all_attrs
+            )
+            new_cols = ", ".join(f"NEW.{a}" for a in all_attrs)
+            join_condition = " AND ".join(f"r1.{a} = r2.{a}" for a in lhs_attrs)
+
+            parts.append(
+                self._render(
+                    "mvd_check.sql.j2",
+                    table_name=table_name,
+                    select_cols=select_cols,
+                    new_cols=new_cols,
+                    join_condition=join_condition,
+                )
+            )
+
+            # MVD grounding: one UNION SELECT per determined attr
+            # Each SELECT swaps that determined attr with NEW, keeps rest from r1
+            union_selects = []
+            for det_attr in determined_attrs:
+                cols = ", ".join(
+                    f"NEW.{a}" if a == det_attr else f"r1.{a}" for a in all_attrs
+                )
+                union_selects.append({"cols": cols})
+
+            grounding_join = " AND ".join(f"r1.{a} = NEW.{a}" for a in lhs_attrs)
+
+            parts.append(
+                self._render(
+                    "mvd_grounding.sql.j2",
+                    table_name=table_name,
+                    union_selects=union_selects,
+                    join_condition=grounding_join,
+                )
+            )
+
+        return "\n\n".join(parts)
+
+    def _find_table(self, name: str, context: Context) -> Table:
+        for table in context.tables:
+            if table.name == name:
+                return table
+        raise ValueError(f"Table {name} not found in context")
+
+    def _constraints(self) -> str:
+        parts = []
+        for context in [self.ctx.source, self.ctx.target]:
+            mvd = self._mvd_sql(context)
+            if mvd:
+                parts.append(mvd)
+        return "\n\n".join(parts) if parts else ""

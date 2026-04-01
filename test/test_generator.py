@@ -59,3 +59,24 @@ def test_base_tables(example_1_dir: str):
         "deptmanager",
     ]:
         assert f"CREATE TABLE transducer._{name}" in result
+
+
+def test_mvd_constraints(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._constraints()
+
+    # MVD check function (BEFORE INSERT)
+    assert "check_person_source_mvd_check" in result.lower()
+    assert "BEFORE INSERT" in result
+    assert "EXCEPT" in result
+    assert "RAISE EXCEPTION" in result
+
+    # MVD grounding function (AFTER INSERT)
+    assert "check_person_source_mvd_grounding" in result.lower()
+    assert "AFTER INSERT" in result
+    assert "UNION" in result
