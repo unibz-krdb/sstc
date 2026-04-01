@@ -37,6 +37,9 @@ Repository = "https://github.com/unibz-krdb/sstc"
 [tool.uv.sources]
 rapt2 = { path = "../rapt2", editable = true }
 
+[tool.ruff.lint.per-file-ignores]
+"test/*.py" = ["F811"]
+
 [build-system]
 requires = ["uv_build>=0.8.19,<0.9.0"]
 build-backend = "uv_build"

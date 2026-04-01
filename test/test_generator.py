@@ -226,3 +226,46 @@ def test_target_delete_mapping(example_1_dir: str):
 
     # Target delete function
     assert "TARGET_DELETE_FN" in result
+
+
+def test_full_compile_structure(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    sql = Generator(ctx).compile()
+
+    # Schema infrastructure
+    assert "DROP SCHEMA IF EXISTS transducer CASCADE" in sql
+    assert "CREATE SCHEMA transducer" in sql
+    assert "CREATE TABLE transducer._loop" in sql
+
+    # Base tables: 1 source + 8 target = 9
+    # Tracking: 9 × 2 (_INSERT, _DELETE) = 18
+    # Join staging: 9 × 2 (_INSERT_JOIN, _DELETE_JOIN) = 18
+    # Total CREATE TABLE: 9 + 18 + 18 + 1 (loop) = 46
+    create_table_count = sql.count("CREATE TABLE transducer.")
+    assert create_table_count == 46, (
+        f"Expected 46 CREATE TABLE, got {create_table_count}"
+    )
+
+    # Functions: 2 MVD + 3 FD + 18 capture + 18 join + 4 mapping = 45
+    fn_count = sql.count("CREATE OR REPLACE FUNCTION")
+    assert fn_count == 45, f"Expected 45 functions, got {fn_count}"
+
+    # Triggers: 2 MVD + 3 FD + 18 capture + 18 join + 18 mapping = 59
+    trigger_count = sql.count("CREATE TRIGGER")
+    assert trigger_count == 59, f"Expected 59 triggers, got {trigger_count}"
+
+    # Mapping functions present
+    assert "SOURCE_INSERT_FN" in sql
+    assert "SOURCE_DELETE_FN" in sql
+    assert "TARGET_INSERT_FN" in sql
+    assert "TARGET_DELETE_FN" in sql
+
+    # Key SQL patterns
+    assert "ON CONFLICT" in sql
+    assert "DO NOTHING" in sql
+    assert "NATURAL LEFT OUTER JOIN" in sql
+    assert "ABS(loop_start)" in sql
