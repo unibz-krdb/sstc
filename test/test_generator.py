@@ -100,3 +100,31 @@ def test_fd_constraints(example_1_dir: str):
     # Contains RAISE EXCEPTION and BEFORE INSERT trigger
     assert result.count("RAISE EXCEPTION") >= 3  # at least from FDs
     assert "BEFORE INSERT" in result
+
+
+def test_tracking_layer(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._tracking()
+
+    # 9 tables × 2 (INSERT + DELETE) = 18 tracking tables
+    assert result.count("CREATE TABLE") == 18
+
+    # 9 × 2 = 18 capture functions
+    assert result.count("CREATE OR REPLACE FUNCTION") == 18
+
+    # 9 × 2 = 18 triggers
+    assert result.count("CREATE TRIGGER") == 18
+
+    # Source functions check loop_start = -1, target check loop_start = 1
+    assert "loop_start = -1" in result
+    assert "loop_start = 1" in result
+
+    # Correct naming
+    assert "_person_source_INSERT" in result
+    assert "_person_source_DELETE" in result
+    assert "_person_INSERT" in result

@@ -34,6 +34,7 @@ class Generator:
             self._preamble(),
             self._base_tables(),
             self._constraints(),
+            self._tracking(),
         ]
         return "\n\n".join(s for s in sections if s)
 
@@ -209,3 +210,46 @@ class Generator:
             if fd:
                 parts.append(fd)
         return "\n\n".join(parts) if parts else ""
+
+    def _tracking(self) -> str:
+        parts = []
+        for context in [self.ctx.source, self.ctx.target]:
+            direction = context.direction
+            # Source checks loop_start = -1, target checks loop_start = 1
+            loop_check = -1 if direction == "source" else 1
+            for table in context.tables:
+                for suffix, event, row_prefix, return_val in [
+                    ("INSERT", "AFTER INSERT", "NEW", "NEW"),
+                    ("DELETE", "AFTER DELETE", "OLD", "OLD"),
+                ]:
+                    row_values = ", ".join(
+                        f"{row_prefix}.{a}" for a in table.attributes
+                    )
+                    parts.append(
+                        self._render(
+                            "tracking_table.sql.j2",
+                            table_name=table.name,
+                            suffix=suffix,
+                        )
+                    )
+                    parts.append(
+                        self._render(
+                            "capture_function.sql.j2",
+                            direction=direction,
+                            table_name=table.name,
+                            suffix=suffix,
+                            loop_check=loop_check,
+                            row_values=row_values,
+                            return_value=return_val,
+                        )
+                    )
+                    parts.append(
+                        self._render(
+                            "capture_trigger.sql.j2",
+                            direction=direction,
+                            table_name=table.name,
+                            suffix=suffix,
+                            event=event,
+                        )
+                    )
+        return "\n\n".join(parts)

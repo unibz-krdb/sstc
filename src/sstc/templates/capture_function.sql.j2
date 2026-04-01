@@ -1,0 +1,11 @@
+CREATE OR REPLACE FUNCTION {{ schema }}.{{ direction }}_{{ table_name }}_{{ suffix }}_fn()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+    IF EXISTS (SELECT * FROM {{ schema }}._loop WHERE loop_start = {{ loop_check }}) THEN
+        RETURN NULL;
+    ELSE
+        INSERT INTO {{ schema }}._{{ table_name }}_{{ suffix }} VALUES({{ row_values }});
+        RETURN {{ return_value }};
+    END IF;
+END;
+$$;
