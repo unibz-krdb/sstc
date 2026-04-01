@@ -157,3 +157,72 @@ def test_join_layer(example_1_dir: str):
 
     # Temp table created with universal columns
     assert "CREATE TEMPORARY TABLE" in result
+
+
+def test_source_insert_mapping(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._mapping()
+
+    # Wait mechanism
+    assert "ABS(loop_start)" in result
+
+    # For each of 8 target tables: INSERT with ON CONFLICT DO NOTHING
+    assert "ON CONFLICT" in result
+    assert "DO NOTHING" in result
+
+    # Cleanup DELETEs for source tracking tables
+    assert "DELETE FROM" in result
+
+    # Function name
+    assert "SOURCE_INSERT_FN" in result
+
+
+def test_target_insert_mapping(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._mapping()
+
+    # Target insert mapping function
+    assert "TARGET_INSERT_FN" in result
+
+    # WHERE clause with IS NOT NULL for all universal columns
+    assert "IS NOT NULL" in result
+
+    # Insert into source tables
+    assert "_person_source" in result
+
+
+def test_source_delete_mapping(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._mapping()
+
+    # Source delete function
+    assert "SOURCE_DELETE_FN" in result
+    assert "EXCEPT" in result
+
+
+def test_target_delete_mapping(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._mapping()
+
+    # Target delete function
+    assert "TARGET_DELETE_FN" in result

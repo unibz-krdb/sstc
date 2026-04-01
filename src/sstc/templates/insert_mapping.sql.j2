@@ -1,0 +1,57 @@
+CREATE OR REPLACE FUNCTION {{ schema }}.{{ fn_name }}()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+    IF NOT EXISTS (SELECT * FROM {{ schema }}._loop,
+        (SELECT COUNT(*) AS rc_value FROM {{ schema }}._loop) AS row_count
+        WHERE ABS(loop_start) = row_count.rc_value) THEN
+        RETURN NULL;
+    END IF;
+
+{% if use_temp_join %}
+    CREATE TEMPORARY TABLE temp_table_join(
+{% for col in universal_columns %}
+        {{ col.name }} {{ col.data_type }}{% if not loop.last %},{% endif %}
+
+{% endfor %}
+    );
+
+    INSERT INTO temp_table_join (
+        SELECT DISTINCT {{ universal_col_names | join(', ') }}
+        FROM {{ schema }}._{{ source_tables[0] }}_{{ suffix }}_JOIN
+{% for tbl in source_tables[1:] %}
+        NATURAL LEFT OUTER JOIN {{ schema }}._{{ tbl }}_{{ suffix }}_JOIN
+{% endfor %}
+        WHERE {{ where_not_null }}
+    );
+
+{% for tbl in target_tables %}
+    INSERT INTO {{ schema }}._{{ tbl.name }} (SELECT {{ tbl.attrs | join(', ') }} FROM temp_table_join)
+        ON CONFLICT{% if tbl.pk %} ({{ tbl.pk | join(', ') }}){% endif %} DO NOTHING;
+{% endfor %}
+{% if loop_value %}
+    INSERT INTO {{ schema }}._loop VALUES ({{ loop_value }});
+{% endif %}
+
+{% else %}
+{% for tbl in target_tables %}
+    INSERT INTO {{ schema }}._{{ tbl.name }} (SELECT DISTINCT {{ tbl.attrs | join(', ') }}
+        FROM {{ schema }}._{{ source_tables[0] }}_{{ suffix }}_JOIN
+{% for src in source_tables[1:] %}
+        NATURAL LEFT OUTER JOIN {{ schema }}._{{ src }}_{{ suffix }}_JOIN
+{% endfor %}
+        WHERE {{ where_not_null }})
+        ON CONFLICT{% if tbl.pk %} ({{ tbl.pk | join(', ') }}){% endif %} DO NOTHING;
+{% endfor %}
+{% endif %}
+
+{% for tbl in cleanup_tables %}
+    DELETE FROM {{ schema }}._{{ tbl }};
+{% endfor %}
+    DELETE FROM {{ schema }}._loop;
+{% if use_temp_join %}
+    DELETE FROM temp_table_join;
+    DROP TABLE temp_table_join;
+{% endif %}
+    RETURN NEW;
+END;
+$$;

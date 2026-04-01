@@ -43,6 +43,7 @@ class Generator:
             self._constraints(),
             self._tracking(),
             self._join(),
+            self._mapping(),
         ]
         return "\n\n".join(s for s in sections if s)
 
@@ -312,3 +313,250 @@ class Generator:
                         )
                     )
         return "\n\n".join(parts)
+
+    def _mapping(self) -> str:
+        parts = []
+        source = self.ctx.source
+        target = self.ctx.target
+        universal_columns = self._universal_columns()
+        universal_col_names = self._universal_col_names()
+
+        src_table_names = [t.name for t in source.tables]
+        tgt_table_names = [t.name for t in target.tables]
+
+        src_tables_info = [
+            {
+                "name": t.name,
+                "attrs": t.attributes,
+                "pk": source.primary_keys.get(t.name, []),
+            }
+            for t in source.tables
+        ]
+        tgt_tables_info = [
+            {
+                "name": t.name,
+                "attrs": t.attributes,
+                "pk": target.primary_keys.get(t.name, []),
+            }
+            for t in target.tables
+        ]
+
+        # Cleanup table names for each direction + suffix
+        src_cleanup = []
+        for name in src_table_names:
+            src_cleanup.extend([f"{name}_INSERT", f"{name}_INSERT_JOIN"])
+        tgt_cleanup = []
+        for name in tgt_table_names:
+            tgt_cleanup.extend([f"{name}_INSERT", f"{name}_INSERT_JOIN"])
+        src_del_cleanup = []
+        for name in src_table_names:
+            src_del_cleanup.extend([f"{name}_DELETE", f"{name}_DELETE_JOIN"])
+        tgt_del_cleanup = []
+        for name in tgt_table_names:
+            tgt_del_cleanup.extend([f"{name}_DELETE", f"{name}_DELETE_JOIN"])
+
+        # WHERE condition: all columns from source tables must be NOT NULL
+        src_where_cols = set()
+        for t in source.tables:
+            src_where_cols.update(t.attributes)
+        src_insert_where = " AND ".join(f"{a} IS NOT NULL" for a in src_where_cols)
+        tgt_insert_where = " AND ".join(f"{a} IS NOT NULL" for a in universal_col_names)
+
+        # --- SOURCE_INSERT_FN ---
+        parts.append(
+            self._render(
+                "insert_mapping.sql.j2",
+                fn_name="SOURCE_INSERT_FN",
+                suffix="INSERT",
+                source_tables=src_table_names,
+                target_tables=tgt_tables_info,
+                where_not_null=src_insert_where,
+                cleanup_tables=src_cleanup,
+                use_temp_join=False,
+                universal_columns=universal_columns,
+                universal_col_names=universal_col_names,
+                loop_value=None,
+            )
+        )
+        for name in src_table_names:
+            parts.append(
+                self._render(
+                    "mapping_trigger.sql.j2",
+                    fn_name="SOURCE_INSERT_FN",
+                    table_name=name,
+                    suffix="INSERT",
+                )
+            )
+
+        # --- TARGET_INSERT_FN ---
+        parts.append(
+            self._render(
+                "insert_mapping.sql.j2",
+                fn_name="TARGET_INSERT_FN",
+                suffix="INSERT",
+                source_tables=tgt_table_names,
+                target_tables=src_tables_info,
+                where_not_null=tgt_insert_where,
+                cleanup_tables=tgt_cleanup,
+                use_temp_join=True,
+                universal_columns=universal_columns,
+                universal_col_names=universal_col_names,
+                loop_value=-1,
+            )
+        )
+        for name in tgt_table_names:
+            parts.append(
+                self._render(
+                    "mapping_trigger.sql.j2",
+                    fn_name="TARGET_INSERT_FN",
+                    table_name=name,
+                    suffix="INSERT",
+                )
+            )
+
+        # --- SOURCE_DELETE_FN ---
+        mvd_checks = self._build_source_delete_checks(source, target)
+        parts.append(
+            self._render(
+                "delete_mapping.sql.j2",
+                fn_name="SOURCE_DELETE_FN",
+                source_tables=src_table_names,
+                independence_checks=mvd_checks.get("mvd_checks", []),
+                full_independence_check=mvd_checks.get("full_independence_check"),
+                cleanup_tables=src_del_cleanup,
+                use_temp_join=False,
+                universal_columns=universal_columns,
+                universal_col_names=universal_col_names,
+                where_not_null="",
+            )
+        )
+        for name in src_table_names:
+            parts.append(
+                self._render(
+                    "mapping_trigger.sql.j2",
+                    fn_name="SOURCE_DELETE_FN",
+                    table_name=name,
+                    suffix="DELETE",
+                )
+            )
+
+        # --- TARGET_DELETE_FN ---
+        tgt_delete_checks = self._build_target_delete_checks(source, target)
+        parts.append(
+            self._render(
+                "delete_mapping.sql.j2",
+                fn_name="TARGET_DELETE_FN",
+                source_tables=tgt_table_names,
+                independence_checks=tgt_delete_checks,
+                full_independence_check=None,
+                cleanup_tables=tgt_del_cleanup,
+                use_temp_join=True,
+                universal_columns=universal_columns,
+                universal_col_names=universal_col_names,
+                where_not_null=tgt_insert_where,
+            )
+        )
+        for name in tgt_table_names:
+            parts.append(
+                self._render(
+                    "mapping_trigger.sql.j2",
+                    fn_name="TARGET_DELETE_FN",
+                    table_name=name,
+                    suffix="DELETE",
+                )
+            )
+
+        return "\n\n".join(parts)
+
+    def _build_source_delete_checks(self, source: Context, target: Context) -> dict:
+        """Build independence checks for source→target DELETE mapping."""
+        mvds = source.multivalued_dependencies
+        src_table = source.tables[0]
+        src_table_names = [t.name for t in source.tables]
+        src_name = src_table.name
+        all_attrs = src_table.attributes
+        pk = source.primary_keys.get(src_name, [])
+
+        mvd_checks = []
+        for mvd in mvds:
+            lhs_attrs = list(mvd.attributes)[:-1]
+            det_attr = list(mvd.attributes)[-1]
+
+            # Find target table whose attrs contain the MVD determined attr + LHS
+            target_table = None
+            for t in target.tables:
+                if det_attr in t.attributes and all(
+                    a in t.attributes for a in lhs_attrs
+                ):
+                    target_table = t
+                    break
+
+            if target_table is None:
+                continue
+
+            target_pk = target.primary_keys.get(target_table.name, [])
+            lhs_match = " AND ".join(f"{a} = NEW.{a}" for a in lhs_attrs)
+            det_match = f"{det_attr} = NEW.{det_attr}"
+
+            mvd_checks.append(
+                {
+                    "source_table": src_name,
+                    "target_table": target_table.name,
+                    "target_pk": target_pk,
+                    "lhs_match": lhs_match,
+                    "det_match": det_match,
+                    "join_expr": " NATURAL LEFT OUTER JOIN ".join(
+                        f"{self.schema}._{n}_DELETE_JOIN" for n in src_table_names
+                    ),
+                }
+            )
+
+        # Full independence check: if no tuples remain with same PK, delete all
+        non_pk_attrs = [a for a in all_attrs if a not in pk]
+        lhs_match = " AND ".join(f"{a} = NEW.{a}" for a in pk)
+        all_match = (
+            lhs_match + " AND " + " AND ".join(f"{a} = NEW.{a}" for a in non_pk_attrs)
+        )
+
+        full_deletes = []
+        for t in target.tables:
+            t_pk = target.primary_keys.get(t.name, [])
+            cond = " AND ".join(
+                f"{a} = NEW.{a}" for a in (t_pk if t_pk else t.attributes)
+            )
+            full_deletes.append({"table": t.name, "condition": cond})
+
+        return {
+            "mvd_checks": mvd_checks,
+            "full_independence_check": {
+                "source_table": src_name,
+                "lhs_match": lhs_match,
+                "all_match": all_match,
+                "deletes": full_deletes,
+            },
+        }
+
+    def _build_target_delete_checks(
+        self, source: Context, target: Context
+    ) -> list[dict]:
+        """Build independence checks for target→source DELETE mapping."""
+        checks = []
+        for src_table in source.tables:
+            src_pk = source.primary_keys.get(src_table.name, [])
+            tgt_names = [t.name for t in target.tables]
+            join_source = " NATURAL LEFT OUTER JOIN ".join(
+                f"{self.schema}._{n}" for n in tgt_names
+            )
+            join_cols = ", ".join(f"r1.{a}" for a in self._universal_col_names())
+            join_cond = " AND ".join(f"r1.{a} = temp_table_join.{a}" for a in src_pk)
+            checks.append(
+                {
+                    "main_table": src_table.name,
+                    "pk": src_pk,
+                    "join_source": join_source,
+                    "join_cols": join_cols,
+                    "join_condition": join_cond,
+                    "dependent_deletes": [],
+                }
+            )
+        return checks

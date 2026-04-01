@@ -1,0 +1,4 @@
+CREATE TRIGGER {{ fn_name }}_trigger_{{ table_name }}
+AFTER INSERT ON {{ schema }}._{{ table_name }}_{{ suffix }}_JOIN
+FOR EACH ROW
+EXECUTE FUNCTION {{ schema }}.{{ fn_name }}();

@@ -1,0 +1,74 @@
+CREATE OR REPLACE FUNCTION {{ schema }}.{{ fn_name }}()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+    IF NOT EXISTS (SELECT * FROM {{ schema }}._loop,
+        (SELECT COUNT(*) AS rc_value FROM {{ schema }}._loop) AS row_count
+        WHERE ABS(loop_start) = row_count.rc_value) THEN
+        RETURN NULL;
+    END IF;
+
+{% if use_temp_join %}
+    CREATE TEMPORARY TABLE temp_table_join(
+{% for col in universal_columns %}
+        {{ col.name }} {{ col.data_type }}{% if not loop.last %},{% endif %}
+
+{% endfor %}
+    );
+
+    INSERT INTO temp_table_join (
+        SELECT {{ universal_col_names | join(', ') }}
+        FROM {{ schema }}._{{ source_tables[0] }}_DELETE_JOIN
+{% for tbl in source_tables[1:] %}
+        NATURAL LEFT OUTER JOIN {{ schema }}._{{ tbl }}_DELETE_JOIN
+{% endfor %}
+        WHERE {{ where_not_null }}
+    );
+
+{% for check in independence_checks %}
+    IF EXISTS (SELECT {{ check.join_cols }}
+        FROM ({{ check.join_source }}) AS r1, temp_table_join
+        WHERE {{ check.join_condition }}
+        EXCEPT SELECT * FROM temp_table_join) THEN
+        DELETE FROM {{ schema }}._{{ check.main_table }} WHERE ({{ check.pk | join(', ') }}) IN (SELECT {{ check.pk | join(', ') }} FROM temp_table_join);
+    ELSE
+        DELETE FROM {{ schema }}._{{ check.main_table }} WHERE ({{ check.pk | join(', ') }}) IN (SELECT {{ check.pk | join(', ') }} FROM temp_table_join);
+{% for dep_tbl in check.dependent_deletes %}
+        DELETE FROM {{ schema }}._{{ dep_tbl.name }} WHERE ({{ dep_tbl.pk | join(', ') }}) IN (SELECT {{ dep_tbl.pk | join(', ') }} FROM temp_table_join);
+{% endfor %}
+    END IF;
+{% endfor %}
+
+{% else %}
+{% for check in independence_checks %}
+    IF EXISTS (SELECT * FROM {{ schema }}._{{ check.source_table }} WHERE {{ check.lhs_match }}
+        EXCEPT (SELECT * FROM {{ schema }}._{{ check.source_table }} WHERE {{ check.lhs_match }} AND {{ check.det_match }})) THEN
+        DELETE FROM {{ schema }}._{{ check.target_table }} WHERE ({{ check.target_pk | join(', ') }}) IN
+            (SELECT {{ check.target_pk | join(', ') }} FROM {{ schema }}._{{ source_tables[0] }}_DELETE_JOIN
+{% for src in source_tables[1:] %}
+            NATURAL LEFT OUTER JOIN {{ schema }}._{{ src }}_DELETE_JOIN
+{% endfor %}
+            );
+    END IF;
+{% endfor %}
+
+{% if full_independence_check %}
+    IF NOT EXISTS (SELECT * FROM {{ schema }}._{{ full_independence_check.source_table }} WHERE {{ full_independence_check.lhs_match }}
+        EXCEPT (SELECT * FROM {{ schema }}._{{ full_independence_check.source_table }} WHERE {{ full_independence_check.all_match }})) THEN
+{% for del in full_independence_check.deletes %}
+        DELETE FROM {{ schema }}._{{ del.table }} WHERE {{ del.condition }};
+{% endfor %}
+    END IF;
+{% endif %}
+{% endif %}
+
+{% for tbl in cleanup_tables %}
+    DELETE FROM {{ schema }}._{{ tbl }};
+{% endfor %}
+    DELETE FROM {{ schema }}._loop;
+{% if use_temp_join %}
+    DELETE FROM temp_table_join;
+    DROP TABLE temp_table_join;
+{% endif %}
+    RETURN NEW;
+END;
+$$;
