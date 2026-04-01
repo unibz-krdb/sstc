@@ -2,6 +2,13 @@ from pathlib import Path
 
 import jinja2
 
+from rapt2.treebrd.condition_node import (
+    BinaryConditionNode,
+    UnaryConditionNode,
+    UnaryConditionalOperator,
+)
+from rapt2.treebrd.node import SelectNode
+
 from .context import Context
 from .table import Table
 from .transducer_context import TransducerContext
@@ -140,10 +147,65 @@ class Generator:
                 return table
         raise ValueError(f"Table {name} not found in context")
 
+    @staticmethod
+    def _extract_defined_attrs(cond) -> list[str]:
+        if isinstance(cond, UnaryConditionNode):
+            if cond.op == UnaryConditionalOperator.DEFINED:
+                return cond.child.attribute_references()
+            return []
+        if isinstance(cond, BinaryConditionNode):
+            return Generator._extract_defined_attrs(
+                cond.left
+            ) + Generator._extract_defined_attrs(cond.right)
+        return []
+
+    def _fd_sql(self, context: Context) -> str:
+        fds = context.functional_dependencies
+        if not fds:
+            return ""
+
+        parts = []
+        for i, fd in enumerate(fds, 1):
+            # RAPT2 convention: fd_{a, b} stores [a, b]
+            # attrs[:-1] = LHS, attrs[-1:] = RHS
+            lhs_attrs = list(fd.attributes)[:-1]
+            rhs_attrs = list(fd.attributes)[-1:]
+
+            table = self._find_table(fd.relation_name, context)
+            all_attrs = table.attributes
+            new_cols = ", ".join(f"NEW.{a}" for a in all_attrs)
+
+            lhs_condition = " AND ".join(f"r1.{a} = r2.{a}" for a in lhs_attrs)
+            rhs_condition = " AND ".join(f"r1.{a} <> r2.{a}" for a in rhs_attrs)
+
+            # Extract guard attributes if FD is guarded (child is SelectNode)
+            guard_attrs = []
+            if isinstance(fd.child, SelectNode):
+                guard_attrs = self._extract_defined_attrs(fd.child.conditions)
+
+            parts.append(
+                self._render(
+                    "fd_check.sql.j2",
+                    table_name=fd.relation_name,
+                    fd_index=i,
+                    new_cols=new_cols,
+                    lhs_attrs=lhs_attrs,
+                    rhs_attrs=rhs_attrs,
+                    lhs_condition=lhs_condition,
+                    rhs_condition=rhs_condition,
+                    guard_attrs=guard_attrs,
+                )
+            )
+
+        return "\n\n".join(parts)
+
     def _constraints(self) -> str:
         parts = []
         for context in [self.ctx.source, self.ctx.target]:
             mvd = self._mvd_sql(context)
             if mvd:
                 parts.append(mvd)
+            fd = self._fd_sql(context)
+            if fd:
+                parts.append(fd)
         return "\n\n".join(parts) if parts else ""

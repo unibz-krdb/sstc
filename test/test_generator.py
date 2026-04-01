@@ -80,3 +80,23 @@ def test_mvd_constraints(example_1_dir: str):
     assert "check_person_source_mvd_grounding" in result.lower()
     assert "AFTER INSERT" in result
     assert "UNION" in result
+
+
+def test_fd_constraints(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._constraints()
+
+    # 3 FD check functions for person_source (each has function + trigger = 6 occurrences)
+    assert result.lower().count("check_person_source_fd") == 6
+
+    # All guarded with IS NOT NULL
+    assert "IS NOT NULL" in result
+
+    # Contains RAISE EXCEPTION and BEFORE INSERT trigger
+    assert result.count("RAISE EXCEPTION") >= 3  # at least from FDs
+    assert "BEFORE INSERT" in result

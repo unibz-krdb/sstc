@@ -1,0 +1,27 @@
+CREATE OR REPLACE FUNCTION {{ schema }}.check_{{ table_name }}_fd_{{ fd_index }}_fn()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+{% if guard_attrs %}
+    IF {% for attr in guard_attrs %}NEW.{{ attr }} IS NOT NULL{% if not loop.last %} AND {% endif %}{% endfor %} THEN
+{% endif %}
+    IF EXISTS (SELECT *
+        FROM {{ schema }}._{{ table_name }} AS r1,
+        (SELECT {{ new_cols }}) AS r2
+        WHERE {{ lhs_condition }}
+        AND {{ rhs_condition }}) THEN
+        RAISE EXCEPTION 'FD constraint violation on {{ table_name }}: {{ lhs_attrs | join(", ") }} -> {{ rhs_attrs | join(", ") }}';
+        RETURN NULL;
+    ELSE
+        RETURN NEW;
+    END IF;
+{% if guard_attrs %}
+    END IF;
+    RETURN NEW;
+{% endif %}
+END;
+$$;
+
+CREATE TRIGGER {{ table_name }}_fd_{{ fd_index }}_trigger
+BEFORE INSERT ON {{ schema }}._{{ table_name }}
+FOR EACH ROW
+EXECUTE FUNCTION {{ schema }}.check_{{ table_name }}_fd_{{ fd_index }}_fn();
