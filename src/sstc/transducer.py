@@ -1,8 +1,8 @@
+from .generator import Generator
 from .transducer_context import TransducerContext
 
 
 class Transducer:
-
     def __init__(self, ctx: TransducerContext):
         self.ctx = ctx
 
@@ -18,5 +18,5 @@ class Transducer:
             )
         )
 
-    def compile(self):
-        raise NotImplementedError()
+    def compile(self) -> str:
+        return Generator(self.ctx).compile()
