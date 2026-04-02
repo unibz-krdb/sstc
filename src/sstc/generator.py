@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import jinja2
@@ -16,9 +17,6 @@ from .transducer_context import TransducerContext
 
 class UnsupportedError(Exception):
     pass
-
-
-from dataclasses import dataclass, field
 
 
 @dataclass
@@ -264,7 +262,7 @@ class Generator:
         for guard_frozen, tables in sorted_guards:
             cumulative = set()
             for g, _ in sorted_guards:
-                if len(g) <= len(guard_frozen):
+                if g <= guard_frozen:
                     cumulative |= set(g)
 
             not_null = [c for c in nullable_cols if c in cumulative]
