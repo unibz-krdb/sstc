@@ -1,0 +1,35 @@
+P := \project_{ssn, name} Universal;
+pk_{ssn} P;
+
+PersonPhone := \project_{ssn, phone} Universal;
+pk_{ssn, phone} PersonPhone;
+
+PersonEmail := \project_{ssn, email} Universal;
+pk_{ssn, email} PersonEmail;
+
+PE := \project_{ssn, empid} \select_{defined(empid) and defined(hdate)} Universal;
+pk_{empid} PE;
+
+PE_HDATE := \project_{empid, hdate} \select_{defined(empid) and defined(hdate)} Universal;
+pk_{empid} PE_HDATE;
+
+PED := \project_{ssn, empid} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Universal;
+pk_{empid} PED;
+
+PEDDept := \project_{empid, dept} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Universal;
+pk_{empid} PEDDept;
+
+DeptManager := \project_{dept, manager} \select_{defined(empid) and defined(hdate) and defined(dept) and defined(manager)} Universal;
+pk_{dept} DeptManager;
+
+inc=_{ssn, ssn} (P, PersonPhone);
+inc=_{ssn, ssn} (P, PersonEmail);
+inc=_{empid, empid} (PE, PE_HDATE);
+inc=_{empid, empid} (PED, PEDDept);
+inc=_{dept, dept} (PEDDept, DeptManager);
+
+inc⊆_{ssn, ssn} (PE, P);
+inc⊆_{empid, empid} (PED, PE);
+inc⊆_{manager, ssn} (DeptManager, P);
+
+UniversalMapping := \project_{ssn, empid, name, hdate, phone, email, dept, manager} (P \natural_join PersonPhone \natural_join PersonEmail \natural_join PE \natural_join PE_HDATE \natural_join PED \natural_join PEDDept \natural_join DeptManager);

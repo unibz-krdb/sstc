@@ -1,0 +1,42 @@
+[
+    {
+        "name": "ssn",
+        "data_type": "VARCHAR(100)",
+        "is_nullable": false
+    },
+    {
+        "name": "empid",
+        "data_type": "VARCHAR(100)",
+        "is_nullable": true
+    },
+    {
+        "name": "name",
+        "data_type": "VARCHAR(100)",
+        "is_nullable": false
+    },
+    {
+        "name": "hdate",
+        "data_type": "VARCHAR(100)",
+        "is_nullable": true
+    },
+    {
+        "name": "phone",
+        "data_type": "VARCHAR(100)",
+        "is_nullable": false
+    },
+    {
+        "name": "email",
+        "data_type": "VARCHAR(100)",
+        "is_nullable": false
+    },
+    {
+        "name": "dept",
+        "data_type": "VARCHAR(100)",
+        "is_nullable": true
+    },
+    {
+        "name": "manager",
+        "data_type": "VARCHAR(100)",
+        "is_nullable": true
+    }
+]

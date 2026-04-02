@@ -1,6 +1,7 @@
 import os
 
 from fixtures import example_1_dir as example_1_dir
+from fixtures import example_2_dir as example_2_dir
 
 from sstc import TransducerContext
 from sstc.generator import Generator
@@ -300,3 +301,13 @@ def test_full_compile_structure(example_1_dir: str):
     assert "DO NOTHING" in sql
     assert "NATURAL LEFT OUTER JOIN" in sql
     assert "ABS(loop_start)" in sql
+
+
+def test_example2_parses(example_2_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    assert len(ctx.source.tables) == 1
+    assert len(ctx.target.tables) == 8
