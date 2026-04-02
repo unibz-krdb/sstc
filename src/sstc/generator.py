@@ -7,7 +7,7 @@ from rapt2.treebrd.condition_node import (
     UnaryConditionNode,
     UnaryConditionalOperator,
 )
-from rapt2.treebrd.node import SelectNode
+from rapt2.treebrd.node import SelectNode, UnaryNode
 
 from .context import Context
 from .table import Table
@@ -16,6 +16,25 @@ from .transducer_context import TransducerContext
 
 class UnsupportedError(Exception):
     pass
+
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class GuardLevel:
+    guard_attrs: set[str]
+    tables: list[str] = field(default_factory=list)
+    not_null_cols: list[str] = field(default_factory=list)
+    null_cols: list[str] = field(default_factory=list)
+
+
+@dataclass
+class GuardHierarchy:
+    mandatory_cols: list[str]
+    nullable_cols: list[str]
+    levels: list[GuardLevel]
+    source_pk: list[str]
 
 
 class Generator:
@@ -208,6 +227,68 @@ class Generator:
                 cond.left
             ) + Generator._extract_defined_attrs(cond.right)
         return []
+
+    def _extract_table_guard_attrs(self, table: Table) -> list[str]:
+        """Extract guard attributes from a target table's select clause."""
+        node = table.definition.child  # Skip AssignNode → get ProjectNode
+        while node is not None:
+            if isinstance(node, SelectNode):
+                return self._extract_defined_attrs(node.conditions)
+            if isinstance(node, UnaryNode):
+                node = node.child
+            else:
+                return []
+        return []
+
+    def _build_guard_hierarchy(self) -> GuardHierarchy:
+        """Build the specialization hierarchy from universal schema + target table guards."""
+        schema = self.ctx.source.tables[0].universal_schema
+        mandatory_cols = [a.name for a in schema if not a.is_nullable]
+        nullable_cols = [a.name for a in schema if a.is_nullable]
+
+        # Extract distinct guard sets from target tables
+        guard_sets: dict[frozenset[str], list[str]] = {}
+        for table in self.ctx.target.tables:
+            guard = frozenset(self._extract_table_guard_attrs(table))
+            guard_sets.setdefault(guard, []).append(table.name)
+
+        # Always include empty guard (Level 0)
+        if frozenset() not in guard_sets:
+            guard_sets[frozenset()] = []
+
+        # Sort by cardinality ascending
+        sorted_guards = sorted(guard_sets.items(), key=lambda x: len(x[0]))
+
+        # Build levels with cumulative not_null / null columns
+        levels = []
+        for guard_frozen, tables in sorted_guards:
+            cumulative = set()
+            for g, _ in sorted_guards:
+                if len(g) <= len(guard_frozen):
+                    cumulative |= set(g)
+
+            not_null = [c for c in nullable_cols if c in cumulative]
+            null = [c for c in nullable_cols if c not in cumulative]
+
+            levels.append(GuardLevel(
+                guard_attrs=set(guard_frozen),
+                tables=tables,
+                not_null_cols=not_null,
+                null_cols=null,
+            ))
+
+        src_pk: list[str] = []
+        for t in self.ctx.source.tables:
+            for col in self.ctx.source.primary_keys.get(t.name, []):
+                if col not in src_pk:
+                    src_pk.append(col)
+
+        return GuardHierarchy(
+            mandatory_cols=mandatory_cols,
+            nullable_cols=nullable_cols,
+            levels=levels,
+            source_pk=src_pk,
+        )
 
     def _fd_sql(self, context: Context) -> str:
         fds = context.functional_dependencies

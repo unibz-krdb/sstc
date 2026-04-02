@@ -311,3 +311,54 @@ def test_example2_parses(example_2_dir: str):
     )
     assert len(ctx.source.tables) == 1
     assert len(ctx.target.tables) == 8
+
+
+def test_guard_hierarchy_example1(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    hierarchy = gen._build_guard_hierarchy()
+
+    # example1: all columns nullable
+    assert hierarchy.mandatory_cols == []
+    assert set(hierarchy.nullable_cols) == {
+        "ssn", "empid", "name", "hdate", "phone", "email", "dept", "manager"
+    }
+
+    # 3 distinct guard levels: {}, {empid,hdate}, {empid,hdate,dept,manager}
+    assert len(hierarchy.levels) == 3
+    assert hierarchy.levels[0].guard_attrs == set()
+    assert hierarchy.levels[1].guard_attrs == {"empid", "hdate"}
+    assert hierarchy.levels[2].guard_attrs == {"empid", "hdate", "dept", "manager"}
+
+
+def test_guard_hierarchy_example2(example_2_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    hierarchy = gen._build_guard_hierarchy()
+
+    # example2: ssn, name, phone, email are NOT nullable
+    assert set(hierarchy.mandatory_cols) == {"ssn", "name", "phone", "email"}
+    assert set(hierarchy.nullable_cols) == {"empid", "hdate", "dept", "manager"}
+
+    # Same 3 levels
+    assert len(hierarchy.levels) == 3
+
+    # Level 0: all nullable cols are NULL
+    assert hierarchy.levels[0].null_cols == ["empid", "hdate", "dept", "manager"]
+    assert hierarchy.levels[0].not_null_cols == []
+
+    # Level 1: empid, hdate NOT NULL; dept, manager NULL
+    assert set(hierarchy.levels[1].not_null_cols) == {"empid", "hdate"}
+    assert set(hierarchy.levels[1].null_cols) == {"dept", "manager"}
+
+    # Level 2: all NOT NULL
+    assert set(hierarchy.levels[2].not_null_cols) == {"empid", "hdate", "dept", "manager"}
+    assert hierarchy.levels[2].null_cols == []
