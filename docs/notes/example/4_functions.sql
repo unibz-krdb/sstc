@@ -562,9 +562,9 @@ create temporary table temp_table_join (
    manager VARCHAR(100)
 );
 
-INSERT INTO temp_table (
+INSERT INTO temp_table_join (
    SELECT DISTINCT ssn, empid, name, hdate, phone, email, dept, manager
-   FROM transducer._P_INSERT_JOIN 
+   FROM transducer._P_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PE_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PE_HDATE_INSERT_JOIN
    NATURAL LEFT OUTER JOIN transducer._PED_INSERT_JOIN
