@@ -64,12 +64,45 @@ Current status: the need for connected component detection is identified. The gr
 
 Source: `notes/transducer_definition.sql` lines 199-215
 
+## Tuple containment in target-to-source mapping with NULLs
+
+When nullable attributes are present in a URA (Universal Relation Assumption) schema, the target-to-source mapping function's NATURAL LEFT OUTER JOIN of `_INSERT_JOIN` tables can produce multiple valid but overlapping tuples for the same entity. The less-informative tuples (those with more NULLs) must be pruned before inserting into the source table, or PK violations occur.
+
+For example, inserting an employee `{ssn5, emp5, Jex, hdate5, phone51, mail51, NULL, NULL}` into target tables and then reconstructing via the join produces two tuples:
+
+```
+{ssn5, emp5, Jex, hdate5, phone51, mail51, NULL, NULL}   -- correct, most informative
+{ssn5, NULL, Jex, NULL,   phone51, mail51, NULL, NULL}    -- correct but dominated
+```
+
+Both satisfy the WHERE clause's null-pattern filter (which allows `empid IS NULL AND hdate IS NULL` OR `empid IS NOT NULL AND hdate IS NOT NULL`), but inserting both violates the PK constraint on `(ssn, phone, email)`.
+
+The current workaround uses a manual containment check:
+
+```sql
+IF EXISTS (SELECT * FROM temp_table_join
+         EXCEPT (SELECT * FROM temp_table_join WHERE empid IS NULL)) THEN
+   IF EXISTS (SELECT * FROM temp_table_join
+         EXCEPT (SELECT * FROM temp_table_join WHERE dept IS NULL)) THEN
+      DELETE FROM temp_table_join WHERE dept IS NULL;
+   ELSE
+      DELETE FROM temp_table_join WHERE empid IS NULL;
+   END IF;
+END IF;
+```
+
+This approach is manually tailored to the known hierarchy (person ⊃ employee ⊃ employee-with-department) and does not generalize. The compiler needs a systematic way to detect and resolve tuple containment based on the schema's null-pattern structure. A general algorithm would need to determine, from the set of guard dependencies and conditional FDs, which null-pattern groups dominate others and prune accordingly.
+
+Current status: a hand-written workaround exists for the PERSON example (`docs/notes/example/null_example_notes.sql`). No general algorithm has been developed.
+
+Source: `docs/notes/example/null_example_notes.sql` lines 269-297
+
 ## Inclusion dependencies
 
 Inclusion dependencies generalize foreign keys: they state that the set of values appearing in one attribute must be a subset of the values appearing in another attribute, possibly in a different table. For example, a `manager` attribute must contain only values that also appear in the `ssn` attribute. The constraint definition notes mention this dependency type but provide no implementation detail.
 
 The compiler needs to support inclusion dependencies because they appear in the relational algebra constraint declarations (as `inc=` and `inc⊆` operators in RAPT2). Without trigger functions to enforce them, the generated database would silently allow violations of these constraints. The implementation should follow the same pattern as other constraint triggers: a BEFORE INSERT check that raises an exception if the inclusion is violated.
 
-Current status: no SQL implementation exists. The RAPT2 parser already recognizes inclusion dependency nodes, but the compiler does not yet generate enforcement triggers for them.
+Current status: a working implementation exists for the intra-table case in `docs/notes/example/1_source.sql` (`check_PERSON_IND_FN_1`), which enforces `manager ⊆ ssn` within the same table using a BEFORE INSERT trigger. The function handles NULLs (allowing NULL manager) and self-reference (allowing `manager = ssn`). The RAPT2 parser already recognizes inclusion dependency nodes, but the compiler does not yet generate these enforcement triggers automatically. The inter-table case (INC across different tables) has not been implemented.
 
-Source: `notes/constraint_definition.sql` lines 436-444
+Source: `notes/constraint_definition.sql` lines 436-444, `docs/notes/example/1_source.sql` lines 71-93

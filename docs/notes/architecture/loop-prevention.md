@@ -7,7 +7,7 @@ The transducer propagates updates bidirectionally between equivalent schemas. Wi
 ## The _LOOP Control Table
 
 ```sql
-CREATE TABLE _LOOP (loop_start INT);
+CREATE TABLE _LOOP (loop_start INT NOT NULL);
 ```
 
 This single-column table acts as a signaling mechanism between the source and target sides of the transducer. It holds integer values that encode which side initiated the current update.
@@ -25,37 +25,35 @@ Each update in a transaction adds a row to `_LOOP`. This means a transaction tou
 
 ## Source-Side INSERT Trigger
 
-When a row is inserted into a source table Si, the trigger checks for `-1` in `_LOOP`. If found, this update originated from the target side and has looped back -- the trigger cleans up `_LOOP` and returns NULL to cancel the insert. Otherwise, it records `1` in `_LOOP` and proceeds:
+When a row is inserted into a source table Si, the trigger checks for `-1` in `_LOOP`. If found, this update originated from the target side and has looped back -- the trigger returns NULL to cancel the insert. Otherwise, it copies the new row into the tracking table and proceeds:
 
 ```sql
 CREATE OR REPLACE FUNCTION Si_INSERT_FN()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 BEGIN
-IF EXISTS (SELECT * FROM LOOP WHERE loop = -1) THEN
-   DELETE FROM LOOP;
+IF EXISTS (SELECT * FROM _LOOP WHERE loop_start = -1) THEN
    RETURN NULL;
 ELSE
-   INSERT INTO LOOP VALUES(1);
-   INSERT INTO SIi VALUES(...);
+   INSERT INTO SIi VALUES(NEW.X, NEW.Y, ...);
    RETURN NEW;
 END IF;
 END;  $$;
 ```
 
+Note: the trigger does **not** insert into `_LOOP` or clean it up. The loop marker is inserted by the JOIN function (Step 2 of the [insert chain](../sql-generation/insert-chain.md)), and cleanup happens in the final mapping function.
+
 ## Target-Side INSERT Trigger
 
-The target side is the mirror image. It checks for `1` (source-originated updates) and records `-1`:
+The target side is the mirror image. It checks for `1` (source-originated updates) and returns NULL to break the loop:
 
 ```sql
 CREATE OR REPLACE FUNCTION Tj_INSERT_FN()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 BEGIN
-IF EXISTS (SELECT * FROM LOOP WHERE loop = 1) THEN
-   DELETE FROM LOOP;
+IF EXISTS (SELECT * FROM _LOOP WHERE loop_start = 1) THEN
    RETURN NULL;
 ELSE
-   INSERT INTO LOOP VALUES(-1);
-   INSERT INTO TIj VALUES(...);
+   INSERT INTO TIj VALUES(NEW.X, NEW.Y, ...);
    RETURN NEW;
 END IF;
 END;  $$;
@@ -64,10 +62,10 @@ END;  $$;
 ## How It Works Step by Step
 
 1. User inserts a row into source table S1.
-2. `S1_INSERT_FN()` checks `_LOOP` for `-1` -- finds none. Inserts `1` into `_LOOP` and copies NEW into SI1.
-3. The update propagates through the join layer and the final mapping function inserts into target tables T1..Tm.
-4. Each target table insert fires `Tj_INSERT_FN()`, which checks `_LOOP` for `1` -- finds it. The looped update is detected.
-5. The trigger deletes all rows from `_LOOP` and returns NULL, canceling the insert. The loop stops.
+2. `S1_INSERT_FN()` checks `_LOOP` for `-1` -- finds none. Copies NEW into SI1.
+3. The JOIN function fires, inserts `1` into `_LOOP`, and populates the JOIN tables.
+4. The final mapping function fires, inserts into target tables T1..Tm, and cleans up `_LOOP`.
+5. Each target table insert fires `Tj_INSERT_FN()`, which checks `_LOOP` for `1` -- finds it. Returns NULL, canceling the insert. The loop stops.
 
 ## Cleanup in the Final Mapping Function
 

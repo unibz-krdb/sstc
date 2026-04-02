@@ -110,6 +110,34 @@ END IF;
 END; $$;
 ```
 
+### Conditional INSERTs for nullable schemas (horizontal decomposition)
+
+When target tables are created by horizontal decomposition (selecting rows WHERE certain attributes are NOT NULL), the mapping function cannot unconditionally INSERT into every target table. Tables further down the specialization hierarchy should only receive rows where their defining attributes are non-null.
+
+From the PERSON example (`docs/notes/example/4_functions.sql`), `SOURCE_INSERT_FN` wraps each sub-table INSERT in a null-awareness check:
+
+```sql
+-- _P always receives rows (top of hierarchy)
+INSERT INTO transducer._P (SELECT DISTINCT ssn, name FROM transducer._PERSON_INSERT_JOIN
+                            WHERE ssn IS NOT NULL AND name IS NOT NULL) ON CONFLICT (ssn) DO NOTHING;
+
+-- _PE only receives rows where the employee attributes are non-null
+IF EXISTS (SELECT * FROM transducer._PERSON_INSERT_JOIN WHERE empid IS NOT NULL AND hdate IS NOT NULL) THEN
+   INSERT INTO transducer._PE (SELECT DISTINCT ssn, empid FROM transducer._PERSON_INSERT_JOIN
+                                WHERE ssn IS NOT NULL AND empid IS NOT NULL) ON CONFLICT (empid) DO NOTHING;
+END IF;
+
+-- _PED only receives rows where the department attributes are also non-null
+IF EXISTS (SELECT * FROM transducer._PERSON_INSERT_JOIN
+           WHERE empid IS NOT NULL AND hdate IS NOT NULL AND dept IS NOT NULL AND manager IS NOT NULL) THEN
+   INSERT INTO transducer._PED (SELECT DISTINCT ssn, empid FROM transducer._PERSON_INSERT_JOIN
+                                 WHERE ssn IS NOT NULL AND empid IS NOT NULL
+                                 AND dept IS NOT NULL AND manager IS NOT NULL) ON CONFLICT (empid) DO NOTHING;
+END IF;
+```
+
+The guard conditions (`IF EXISTS`) correspond to the non-null conditions that define each target table's horizontal slice. The compiler must derive these conditions from the guard dependencies and conditional FDs in the schema.
+
 ### Triggers for source_insert_fn
 
 One trigger per source-side `_INSERT_JOIN` table:
@@ -286,6 +314,42 @@ WHERE ssn IS NOT NULL AND name IS NOT NULL AND phone IS NOT NULL
       AND email IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL
       AND city IS NOT NULL AND country IS NOT NULL
 ```
+
+### Null-pattern filtering for nullable schemas
+
+When the schema has nullable attributes (horizontal decomposition), a blanket NOT NULL check would discard valid tuples. Instead, the WHERE clause must enumerate the valid null-patterns -- combinations of NULL/NOT NULL that correspond to real entities in the specialization hierarchy.
+
+From the PERSON example (`docs/notes/example/4_functions.sql`), the `target_insert_fn` WHERE clause accepts three valid patterns:
+
+```sql
+WHERE ssn IS NOT NULL AND name IS NOT NULL
+   AND phone IS NOT NULL AND email IS NOT NULL
+   AND ((empid IS NULL AND hdate IS NULL)                                          -- person only
+      OR (empid IS NOT NULL AND hdate IS NOT NULL AND dept IS NULL)                -- employee
+      OR (empid IS NOT NULL AND hdate IS NOT NULL AND dept IS NOT NULL AND manager IS NOT NULL))  -- employee+dept
+```
+
+Each OR branch corresponds to one level of the specialization hierarchy. Tuples that match none of these patterns (e.g., `empid IS NOT NULL AND hdate IS NULL`) are invalid and filtered out.
+
+### Tuple containment resolution
+
+Even with null-pattern filtering, the T-to-S join can produce multiple valid but overlapping tuples for the same entity. This happens when an employee's `_INSERT_JOIN` data produces both a "full" tuple (with empid/hdate) and a "minimal" tuple (with empid/hdate as NULL). Both pass the null-pattern filter, but inserting both violates the source PK.
+
+The current workaround prunes dominated tuples (those with more NULLs when a more-informative tuple also exists):
+
+```sql
+IF EXISTS (SELECT * FROM temp_table_join
+         EXCEPT (SELECT * FROM temp_table_join WHERE empid IS NULL)) THEN
+   IF EXISTS (SELECT * FROM temp_table_join
+         EXCEPT (SELECT * FROM temp_table_join WHERE dept IS NULL)) THEN
+      DELETE FROM temp_table_join WHERE dept IS NULL;
+   ELSE
+      DELETE FROM temp_table_join WHERE empid IS NULL;
+   END IF;
+END IF;
+```
+
+This is hand-tailored to the PERSON hierarchy and remains an [open problem](../open-problems.md) for generalization. See `docs/notes/example/null_example_notes.sql` for detailed discussion.
 
 ## Cleanup
 

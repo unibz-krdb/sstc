@@ -206,9 +206,25 @@ END; $$;
 Key points about Step 2:
 - The `_INSERT` table is always the leftmost table in the join (the "starting" table)
 - The joins are against the **base** tables (not _INSERT tables) on the same schema side -- this fills in the remaining universal attributes from existing data
-- The NOT NULL WHERE clause filters out rows where the join could not reconstruct a complete universal tuple
 - Every _INSERT_JOIN table on the same side receives its projected columns, even the triggering table's own _INSERT_JOIN table
 - The loop marker value depends on which side: `1` for source, `-1` for target
+
+### NOT NULL filtering in the WHERE clause
+
+When all universal attributes are non-nullable (the EMPDEP/POSITION case), the WHERE clause requires all columns to be NOT NULL:
+
+```sql
+WHERE ssn IS NOT NULL AND name IS NOT NULL AND phone IS NOT NULL
+      AND email IS NOT NULL AND dep_name IS NOT NULL AND dep_address IS NOT NULL
+```
+
+This filters out incomplete tuples from LEFT OUTER JOINs where some tables had no matching rows.
+
+**When the schema has nullable attributes** (the PERSON URA case with horizontal decomposition), this strict filtering cannot be used. Attributes like `empid`, `hdate`, `dept`, and `manager` are legitimately NULL for some entities. In this case, the WHERE clause is **omitted entirely** from the JOIN function, and the temp table passes through all tuples including those with NULLs. The null-pattern filtering is instead handled downstream in the mapping function (Step 3) via conditional INSERT logic. See [mapping-functions.md](mapping-functions.md) for details.
+
+### URA (single-table source) as a special case
+
+When the source schema is a single Universal Relation (URA), the JOIN function in the S-to-T direction is trivial: there are no other base tables to join against, so the INSERT table's contents are simply copied directly into the temp table. The join layer's value in this case is structural -- it still provides the staging area for the mapping function's wait mechanism and the projection step that distributes data into all `_INSERT_JOIN` tables.
 
 ## Step 3 -- Final mapping function (`source_insert_fn` / `target_insert_fn`)
 

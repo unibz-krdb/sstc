@@ -9,5 +9,6 @@ See also: [papers/](../papers/) for the academic paper.
 - [architecture/](architecture/) — The three-layer transducer architecture, loop prevention, timing
 - [constraints/](constraints/) — SQL implementations of FDs, MVDs, guard deps, conditional join deps
 - [sql-generation/](sql-generation/) — Patterns for generating tables, trigger chains, and mapping functions
-- [example/](example/) — The EMPDEP/POSITION running example with full reference SQL output
 - [open-problems.md](open-problems.md) — Unsolved issues and areas needing further work
+
+- [example/](example/) — The PERSON URA running example (NULLs, CFDs, horizontal decomposition). Authoritative reference SQL for the transducer architecture, referenced throughout these docs

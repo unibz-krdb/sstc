@@ -106,6 +106,8 @@ The LEFT OUTER JOIN (rather than plain NATURAL JOIN) is necessary to handle null
 
 The join is executed once per INSERT table that received data. When multiple INSERT tables receive data in the same transaction (e.g., both `PERSON_PHONE_INSERT` and `PERSON_EMAIL_INSERT`), each one independently runs the full NJ query. The union of results across all INSERT tables produces the complete set of tuples needed by the mapping. This is necessary because each INSERT table may produce different join results -- for example, with MVDs `ssn ->> phone` and `ssn ->> email`, inserting a new phone and a new email each independently generate different cross-product tuples.
 
+**URA (single-table) schemas:** When the source side has only one table (a Universal Relation Assumption schema), Layer 3 in the S-to-T direction degenerates -- there are no other base tables to join against, so the NJ query is effectively an identity. The INSERT table's contents are copied directly into the temp table and then projected into the target-side `_INSERT_JOIN` tables. Layer 3 is still structurally required because the wait mechanism and projection step depend on it, but the join itself is trivial. The PERSON example in `docs/notes/example/` demonstrates this case: `_PERSON` is the sole source table, decomposing into 8 target tables. In the T-to-S direction, Layer 3 operates normally -- each of the 8 target tables joins against the other 7 base tables to reconstruct the universal tuple.
+
 ### The Projection Step
 
 The NJ result is projected into each join-layer table. Each SIJk receives only the attributes belonging to table Sk:

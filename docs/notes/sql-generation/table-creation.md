@@ -45,6 +45,32 @@ CREATE TABLE transducer._person (
 );
 ```
 
+## Target table creation via horizontal decomposition
+
+When the source is a URA (Universal Relation Assumption) schema with nullable attributes, target tables are created by horizontal decomposition: a `SELECT DISTINCT` with a `WHERE` clause that selects rows where the defining attributes are non-null. This simultaneously projects the relevant columns and filters to the correct subset of entities.
+
+From the PERSON example (`docs/notes/example/2_target.sql`):
+
+```sql
+-- Top-level: all persons (no WHERE filter needed)
+CREATE TABLE transducer._P AS
+    SELECT DISTINCT ssn, name FROM transducer._PERSON;
+
+-- Employee level: only rows where employee attributes are non-null
+CREATE TABLE transducer._PE AS
+    SELECT DISTINCT ssn, empid FROM transducer._PERSON
+    WHERE empid IS NOT NULL AND hdate IS NOT NULL;
+
+-- Employee+Dept level: only rows where department attributes are also non-null
+CREATE TABLE transducer._PED_DEPT AS
+    SELECT DISTINCT empid, dept FROM transducer._PERSON
+    WHERE empid IS NOT NULL AND dept IS NOT NULL;
+```
+
+The WHERE conditions derive from the conditional FDs and guard dependencies: `_PE` exists because there is a CFD `empid -> hdate` conditioned on `empid, hdate NOT NULL`, so the table only includes rows satisfying that condition.
+
+This pattern differs from the vertical decomposition case (EMPDEP/POSITION), where target tables are created with explicit `CREATE TABLE ... (columns)` and populated by INSERT statements.
+
 ## Column types
 
 All columns currently use `VARCHAR(100)`. Types are derived from the universal schema JSON file, which defines each attribute as `{name, data_type, is_nullable}`. The compiler reads these definitions and maps them to PostgreSQL column types in the generated DDL.

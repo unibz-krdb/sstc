@@ -58,6 +58,6 @@ See `test/inputs/example1/` for working examples.
 
 ## Reference materials
 
-- **`docs/notes/`** — Design documentation: architecture layers, constraint theory (FDs, MVDs, guards, CJDs), SQL generation strategy (insert/delete chains, mapping functions), and a worked example with reference SQL output
+- **`docs/notes/`** — Design documentation: architecture layers, constraint theory (FDs, MVDs, guards, CJDs), SQL generation strategy (insert/delete chains, mapping functions), and open problems
 - **`docs/papers/`** — Research paper the compiler is based on
-- **`notes/`** — Reference SQL scripts (`desired_output.sql`, `full_script_v5_tabletemp.sql`) showing the target output the compiler should produce
+- **`docs/notes/example/`** — **Authoritative** reference SQL for the PERSON URA example (single table with NULLs/CFDs, decomposed into 8 target tables). Files are numbered by layer: `1_source.sql` (constraints), `2_target.sql` (decomposition), `3_updates.sql` (tracking tables), `4_functions.sql` (trigger functions), `5_triggers.sql` (trigger wiring), `6_update.sql` (test inserts). `null_example_notes.sql` contains design rationale and open problems around NULLs
