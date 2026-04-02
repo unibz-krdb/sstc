@@ -288,6 +288,51 @@ class Generator:
             source_pk=src_pk,
         )
 
+    def _build_cfd_where_branches(
+        self,
+        lhs_attrs: list[str],
+        rhs_attrs: list[str],
+        guard_attrs: list[str],
+    ) -> list[str]:
+        """Build exhaustive WHERE OR-branches for a CFD check."""
+        branches: list[str] = []
+
+        # Branch 1: Main FD violation — all guards non-NULL, LHS match, RHS differ
+        guard_not_null = " AND ".join(f"R2.{a} IS NOT NULL" for a in guard_attrs)
+        lhs_match = " AND ".join(f"R1.{a} = R2.{a}" for a in lhs_attrs)
+        rhs_differ = " AND ".join(f"R1.{a} <> R2.{a}" for a in rhs_attrs)
+        branches.append(f"({guard_not_null} AND {lhs_match} AND {rhs_differ})")
+
+        # Invalid states: LHS NULL but RHS non-NULL
+        for rhs_attr in rhs_attrs:
+            for lhs_attr in lhs_attrs:
+                branch = f"(R2.{lhs_attr} IS NULL AND R2.{rhs_attr} IS NOT NULL)"
+                if branch not in branches:
+                    branches.append(branch)
+
+        # Invalid states: non-LHS guard attr NULL but RHS non-NULL
+        non_lhs_guards = [g for g in guard_attrs if g not in lhs_attrs]
+        for rhs_attr in rhs_attrs:
+            for g in non_lhs_guards:
+                if g == rhs_attr:
+                    continue
+                branch = f"(R2.{g} IS NULL AND R2.{rhs_attr} IS NOT NULL)"
+                if branch not in branches:
+                    branches.append(branch)
+
+        # Joint-null violations: guard attrs must be jointly defined or jointly NULL.
+        # If one guard attr is non-NULL and another is NULL, that's invalid.
+        for i, a1 in enumerate(guard_attrs):
+            for a2 in guard_attrs[i + 1 :]:
+                for b in [
+                    f"(R2.{a1} IS NOT NULL AND R2.{a2} IS NULL)",
+                    f"(R2.{a1} IS NULL AND R2.{a2} IS NOT NULL)",
+                ]:
+                    if b not in branches:
+                        branches.append(b)
+
+        return branches
+
     def _fd_sql(self, context: Context) -> str:
         fds = context.functional_dependencies
         if not fds:
@@ -295,8 +340,6 @@ class Generator:
 
         parts = []
         for i, fd in enumerate(fds, 1):
-            # RAPT2 convention: fd_{a, b} stores [a, b]
-            # attrs[:-1] = LHS, attrs[-1:] = RHS
             lhs_attrs = list(fd.attributes)[:-1]
             rhs_attrs = list(fd.attributes)[-1:]
 
@@ -304,27 +347,44 @@ class Generator:
             all_attrs = table.attributes
             new_cols = ", ".join(f"NEW.{a}" for a in all_attrs)
 
-            lhs_condition = " AND ".join(f"r1.{a} = r2.{a}" for a in lhs_attrs)
-            rhs_condition = " AND ".join(f"r1.{a} <> r2.{a}" for a in rhs_attrs)
-
             # Extract guard attributes if FD is guarded (child is SelectNode)
             guard_attrs = []
             if isinstance(fd.child, SelectNode):
                 guard_attrs = self._extract_defined_attrs(fd.child.conditions)
 
-            parts.append(
-                self._render(
-                    "fd_check.sql.j2",
-                    table_name=fd.relation_name,
-                    fd_index=i,
-                    new_cols=new_cols,
-                    lhs_attrs=lhs_attrs,
-                    rhs_attrs=rhs_attrs,
-                    lhs_condition=lhs_condition,
-                    rhs_condition=rhs_condition,
-                    guard_attrs=guard_attrs,
+            if guard_attrs:
+                # Guarded FD -> CFD template with exhaustive OR branches
+                where_branches = self._build_cfd_where_branches(
+                    lhs_attrs, rhs_attrs, guard_attrs
                 )
-            )
+                parts.append(
+                    self._render(
+                        "cfd_check.sql.j2",
+                        table_name=fd.relation_name,
+                        fd_index=i,
+                        new_cols=new_cols,
+                        lhs_attrs=lhs_attrs,
+                        rhs_attrs=rhs_attrs,
+                        where_branches=where_branches,
+                    )
+                )
+            else:
+                # Unguarded FD -> existing simple template
+                lhs_condition = " AND ".join(f"r1.{a} = r2.{a}" for a in lhs_attrs)
+                rhs_condition = " AND ".join(f"r1.{a} <> r2.{a}" for a in rhs_attrs)
+                parts.append(
+                    self._render(
+                        "fd_check.sql.j2",
+                        table_name=fd.relation_name,
+                        fd_index=i,
+                        new_cols=new_cols,
+                        lhs_attrs=lhs_attrs,
+                        rhs_attrs=rhs_attrs,
+                        lhs_condition=lhs_condition,
+                        rhs_condition=rhs_condition,
+                        guard_attrs=[],
+                    )
+                )
 
         return "\n\n".join(parts)
 

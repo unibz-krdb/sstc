@@ -119,14 +119,14 @@ def test_fd_constraints(example_1_dir: str):
     gen = Generator(ctx)
     result = gen._constraints()
 
-    # 3 FD check functions for person_source (each has function + trigger = 6 occurrences)
-    assert result.lower().count("check_person_source_fd") == 6
+    # 3 CFD check functions for person_source (each has function + trigger = 6)
+    assert result.lower().count("check_person_source_cfd") == 6
 
-    # All guarded with IS NOT NULL
+    # All have exhaustive OR branches with IS NOT NULL
     assert "IS NOT NULL" in result
 
     # Contains RAISE EXCEPTION and BEFORE INSERT trigger
-    assert result.count("RAISE EXCEPTION") >= 3  # at least from FDs
+    assert result.count("RAISE EXCEPTION") >= 3
     assert "BEFORE INSERT" in result
 
 
@@ -362,3 +362,29 @@ def test_guard_hierarchy_example2(example_2_dir: str):
     # Level 2: all NOT NULL
     assert set(hierarchy.levels[2].not_null_cols) == {"empid", "hdate", "dept", "manager"}
     assert hierarchy.levels[2].null_cols == []
+
+
+def test_cfd_exhaustive_checks_example2(example_2_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._constraints()
+
+    # 3 CFD check functions (guarded FDs -> CFD template)
+    assert result.lower().count("check_person_source_cfd") >= 3
+
+    # CFD_1 (empid -> hdate, guard {empid, hdate}):
+    assert "R2.empid IS NULL AND R2.hdate IS NOT NULL" in result
+    assert "R2.empid IS NOT NULL AND R2.hdate IS NULL" in result
+
+    # CFD_2 (empid -> dept, guard {empid, hdate, dept, manager}):
+    assert "R2.empid IS NULL AND R2.dept IS NOT NULL" in result
+    assert "R2.empid IS NULL AND R2.manager IS NOT NULL" in result
+    assert "R2.dept IS NOT NULL AND R2.manager IS NULL" in result
+    assert "R2.dept IS NULL AND R2.manager IS NOT NULL" in result
+
+    # All use BEFORE INSERT triggers
+    assert result.count("BEFORE INSERT") >= 3
