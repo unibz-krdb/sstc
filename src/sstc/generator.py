@@ -40,6 +40,7 @@ class Generator:
         sections = [
             self._preamble(),
             self._base_tables(),
+            self._foreign_keys(),
             self._constraints(),
             self._tracking(),
             self._join(),
@@ -84,6 +85,45 @@ class Generator:
             for table in context.tables:
                 parts.append(self._create_table(table, context))
         return "\n".join(parts)
+
+    def _foreign_keys(self) -> str:
+        parts: list[str] = []
+        for context in [self.ctx.source, self.ctx.target]:
+            pks = context.primary_keys
+
+            # inc=_{a, b} (T1, T2): T2[b] references T1[a]
+            for inc in context.inclusion_equivalences:
+                names = list(inc.relation_names)
+                attrs = list(inc.attributes)
+                mid = len(attrs) // 2
+                referenced_table, referencing_table = names[0], names[1]
+                referenced_cols, referencing_cols = attrs[:mid], attrs[mid:]
+                ref_pk = pks.get(referenced_table, [])
+                if sorted(referenced_cols) == sorted(ref_pk):
+                    parts.append(
+                        f"ALTER TABLE {self.schema}._{referencing_table} "
+                        f"ADD FOREIGN KEY ({', '.join(referencing_cols)}) "
+                        f"REFERENCES {self.schema}._{referenced_table}"
+                        f" ({', '.join(referenced_cols)});"
+                    )
+
+            # inc⊆_{a, b} (T1, T2): T1[a] references T2[b]
+            for inc in context.inclusion_subsumptions:
+                names = list(inc.relation_names)
+                attrs = list(inc.attributes)
+                mid = len(attrs) // 2
+                referencing_table, referenced_table = names[0], names[1]
+                referencing_cols, referenced_cols = attrs[:mid], attrs[mid:]
+                ref_pk = pks.get(referenced_table, [])
+                if sorted(referenced_cols) == sorted(ref_pk):
+                    parts.append(
+                        f"ALTER TABLE {self.schema}._{referencing_table} "
+                        f"ADD FOREIGN KEY ({', '.join(referencing_cols)}) "
+                        f"REFERENCES {self.schema}._{referenced_table}"
+                        f" ({', '.join(referenced_cols)});"
+                    )
+
+        return "\n".join(parts) if parts else ""
 
     def _mvd_sql(self, context: Context) -> str:
         mvds = context.multivalued_dependencies
@@ -355,11 +395,20 @@ class Generator:
         for name in tgt_table_names:
             tgt_del_cleanup.extend([f"{name}_DELETE", f"{name}_DELETE_JOIN"])
 
-        # WHERE condition: all columns from source tables must be NOT NULL
-        src_where_cols = set()
+        # Per-table WHERE: source PK columns + each target table's PK columns
+        src_pk_cols: list[str] = []
         for t in source.tables:
-            src_where_cols.update(t.attributes)
-        src_insert_where = " AND ".join(f"{a} IS NOT NULL" for a in src_where_cols)
+            for col in source.primary_keys.get(t.name, []):
+                if col not in src_pk_cols:
+                    src_pk_cols.append(col)
+        for info in tgt_tables_info:
+            where_cols = list(src_pk_cols)
+            for pk_col in info["pk"]:
+                if pk_col not in where_cols:
+                    where_cols.append(pk_col)
+            info["where_not_null"] = " AND ".join(
+                f"{a} IS NOT NULL" for a in where_cols
+            )
         tgt_insert_where = " AND ".join(f"{a} IS NOT NULL" for a in universal_col_names)
 
         # --- SOURCE_INSERT_FN ---
@@ -370,7 +419,7 @@ class Generator:
                 suffix="INSERT",
                 source_tables=src_table_names,
                 target_tables=tgt_tables_info,
-                where_not_null=src_insert_where,
+                where_not_null="",
                 cleanup_tables=src_cleanup,
                 use_temp_join=False,
                 universal_columns=universal_columns,
@@ -428,6 +477,7 @@ class Generator:
                 universal_columns=universal_columns,
                 universal_col_names=universal_col_names,
                 where_not_null="",
+                use_abs=False,
             )
         )
         for name in src_table_names:
@@ -441,7 +491,7 @@ class Generator:
             )
 
         # --- TARGET_DELETE_FN ---
-        tgt_delete_checks = self._build_target_delete_checks(source, target)
+        tgt_delete_checks = self._build_target_delete_checks(source)
         parts.append(
             self._render(
                 "delete_mapping.sql.j2",
@@ -454,6 +504,7 @@ class Generator:
                 universal_columns=universal_columns,
                 universal_col_names=universal_col_names,
                 where_not_null=tgt_insert_where,
+                use_abs=True,
             )
         )
         for name in tgt_table_names:
@@ -536,27 +587,53 @@ class Generator:
             },
         }
 
-    def _build_target_delete_checks(
-        self, source: Context, target: Context
-    ) -> list[dict]:
-        """Build independence checks for target→source DELETE mapping."""
-        checks = []
-        for src_table in source.tables:
-            src_pk = source.primary_keys.get(src_table.name, [])
-            tgt_names = [t.name for t in target.tables]
-            join_source = " NATURAL LEFT OUTER JOIN ".join(
-                f"{self.schema}._{n}" for n in tgt_names
+    def _build_target_delete_checks(self, source: Context) -> list[dict]:
+        """Build independence checks for target→source DELETE mapping.
+
+        Joins SOURCE base tables (not target) to check whether removing
+        a universal tuple leaves other source tuples that still require
+        the same data.
+        """
+        src_names = [t.name for t in source.tables]
+        join_source = " NATURAL LEFT OUTER JOIN ".join(
+            f"{self.schema}._{n}" for n in src_names
+        )
+        join_cols = ", ".join(f"r1.{a}" for a in self._universal_col_names())
+
+        if len(source.tables) == 1:
+            src = source.tables[0]
+            src_pk = source.primary_keys.get(src.name, [])
+            join_cond = " AND ".join(
+                f"r1.{a} = temp_table_join.{a}" for a in src.attributes
             )
-            join_cols = ", ".join(f"r1.{a}" for a in self._universal_col_names())
-            join_cond = " AND ".join(f"r1.{a} = temp_table_join.{a}" for a in src_pk)
-            checks.append(
+            return [
                 {
-                    "main_table": src_table.name,
+                    "main_table": src.name,
                     "pk": src_pk,
                     "join_source": join_source,
                     "join_cols": join_cols,
                     "join_condition": join_cond,
                     "dependent_deletes": [],
+                }
+            ]
+
+        # Multi-source: main table always deleted, dependent tables conditionally
+        main = source.tables[0]
+        main_pk = source.primary_keys.get(main.name, [])
+        checks = []
+        for dep in source.tables[1:]:
+            dep_pk = source.primary_keys.get(dep.name, [])
+            join_cond = " AND ".join(
+                f"r1.{a} = temp_table_join.{a}" for a in dep.attributes
+            )
+            checks.append(
+                {
+                    "main_table": main.name,
+                    "pk": main_pk,
+                    "join_source": join_source,
+                    "join_cols": join_cols,
+                    "join_condition": join_cond,
+                    "dependent_deletes": [{"name": dep.name, "pk": dep_pk}],
                 }
             )
         return checks

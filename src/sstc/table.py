@@ -98,12 +98,8 @@ class Table:
         )[0].replace("TEMPORARY TABLE", "TABLE")
 
     def gen_insert_table_create(self) -> str:
-        return "\n".join(
-            (
-                f"CREATE TABLE {self.name}_INSERT AS"
-                f"SELECT * FROM {self.name}"
-                "WHERE 1<>1;"
-            )
+        return (
+            f"CREATE TABLE {self.name}_INSERT AS SELECT * FROM {self.name} WHERE 1<>1;"
         )
 
     def gen_insert_join_table_create(self) -> str:

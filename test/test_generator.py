@@ -61,6 +61,33 @@ def test_base_tables(example_1_dir: str):
         assert f"CREATE TABLE transducer._{name}" in result
 
 
+def test_foreign_keys(example_1_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._foreign_keys()
+
+    # 4 from equivalences + 3 from subsumptions = 7
+    # (PEDDept→DeptManager skipped: dept is not PEDDept PK)
+    # (Person_Source self-ref skipped: empid is not Person_Source PK)
+    assert result.count("ADD FOREIGN KEY") == 7
+
+    # Equivalence: PersonPhone.ssn → Person.ssn
+    assert (
+        "ALTER TABLE transducer._personphone ADD FOREIGN KEY (ssn) REFERENCES transducer._person (ssn);"
+        in result
+    )
+
+    # Subsumption: DeptManager.manager → Employee.empid
+    assert (
+        "ALTER TABLE transducer._deptmanager ADD FOREIGN KEY (manager) REFERENCES transducer._employee (empid);"
+        in result
+    )
+
+
 def test_mvd_constraints(example_1_dir: str):
     ctx = TransducerContext.from_files(
         universal_path=os.path.join(example_1_dir, "universal.json"),
@@ -263,6 +290,10 @@ def test_full_compile_structure(example_1_dir: str):
     assert "SOURCE_DELETE_FN" in sql
     assert "TARGET_INSERT_FN" in sql
     assert "TARGET_DELETE_FN" in sql
+
+    # Foreign keys: 4 from inc= + 3 from inc⊆ = 7
+    fk_count = sql.count("ADD FOREIGN KEY")
+    assert fk_count == 7, f"Expected 7 foreign keys, got {fk_count}"
 
     # Key SQL patterns
     assert "ON CONFLICT" in sql

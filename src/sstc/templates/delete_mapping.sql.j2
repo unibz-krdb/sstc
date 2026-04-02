@@ -3,7 +3,7 @@ RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 BEGIN
     IF NOT EXISTS (SELECT * FROM {{ schema }}._loop,
         (SELECT COUNT(*) AS rc_value FROM {{ schema }}._loop) AS row_count
-        WHERE ABS(loop_start) = row_count.rc_value) THEN
+        WHERE {% if use_abs %}ABS(loop_start){% else %}loop_start{% endif %} = row_count.rc_value) THEN
         RETURN NULL;
     END IF;
 
