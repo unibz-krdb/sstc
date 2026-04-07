@@ -746,9 +746,10 @@ def test_containment_pruning_multi_level(example_1_dir: str):
     rules = Generator._build_containment_pruning(hierarchy)
 
     assert len(rules) == 2
-    assert "empid IS NOT NULL" in rules[0]["richer_condition"]
-    assert "hdate IS NOT NULL" in rules[0]["richer_condition"]
-    assert "empid IS NULL" in rules[0]["poorer_condition"]
+    assert "t_rich.empid IS NOT NULL" in rules[0]["richer_condition"]
+    assert "t_rich.hdate IS NOT NULL" in rules[0]["richer_condition"]
+    assert "t_poor.empid IS NULL" in rules[0]["poorer_condition"]
+    assert "empid IS NOT NULL" in rules[0]["richer_check"]
     assert rules[0]["identity_match"] == "t_rich.ssn = t_poor.ssn"
 
 

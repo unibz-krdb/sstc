@@ -45,13 +45,17 @@ class Generator:
             trim_blocks=True,
             lstrip_blocks=True,
         )
+        self._hierarchy: GuardHierarchy | None = None
+
+    @property
+    def _universal_schema(self) -> list:
+        return self.ctx.source.tables[0].universal_schema
 
     def _universal_columns(self) -> list[dict]:
-        schema = self.ctx.source.tables[0].universal_schema
-        return [{"name": a.name, "data_type": a.data_type} for a in schema]
+        return [{"name": a.name, "data_type": a.data_type} for a in self._universal_schema]
 
     def _universal_col_names(self) -> list[str]:
-        return [c["name"] for c in self._universal_columns()]
+        return [a.name for a in self._universal_schema]
 
     def compile(self) -> str:
         sections = [
@@ -239,8 +243,11 @@ class Generator:
         return []
 
     def _build_guard_hierarchy(self) -> GuardHierarchy:
-        """Build the specialization hierarchy from universal schema + target table guards."""
-        schema = self.ctx.source.tables[0].universal_schema
+        """Build (and cache) the specialization hierarchy from universal schema + target table guards."""
+        if self._hierarchy is not None:
+            return self._hierarchy
+
+        schema = self._universal_schema
         mandatory_cols = [a.name for a in schema if not a.is_nullable]
         nullable_cols = [a.name for a in schema if a.is_nullable]
 
@@ -283,12 +290,13 @@ class Generator:
                 if col not in src_pk:
                     src_pk.append(col)
 
-        return GuardHierarchy(
+        self._hierarchy = GuardHierarchy(
             mandatory_cols=mandatory_cols,
             nullable_cols=nullable_cols,
             levels=levels,
             source_pk=src_pk,
         )
+        return self._hierarchy
 
     @staticmethod
     def _build_cfd_where_branches(
@@ -378,10 +386,13 @@ class Generator:
             if not new_not_null:
                 continue
 
-            richer_condition = " AND ".join(
+            richer_check = " AND ".join(
                 f"{c} IS NOT NULL" for c in richer.not_null_cols
             )
-            poorer_condition = " AND ".join(f"{c} IS NULL" for c in new_not_null)
+            richer_condition = " AND ".join(
+                f"t_rich.{c} IS NOT NULL" for c in richer.not_null_cols
+            )
+            poorer_condition = " AND ".join(f"t_poor.{c} IS NULL" for c in new_not_null)
             identity_match = " AND ".join(
                 f"t_rich.{c} = t_poor.{c}"
                 for c in (hierarchy.mandatory_cols or hierarchy.source_pk)
@@ -389,6 +400,7 @@ class Generator:
 
             rules.append(
                 {
+                    "richer_check": richer_check,
                     "richer_condition": richer_condition,
                     "poorer_condition": poorer_condition,
                     "identity_match": identity_match,
@@ -443,6 +455,10 @@ class Generator:
             idx += 1
             attrs = list(inc.attributes)
             mid = len(attrs) // 2
+            if mid != 1:
+                raise UnsupportedError(
+                    f"Multi-column intra-table INC not supported: {attrs}"
+                )
             referencing_col = attrs[0]
             referenced_col = attrs[mid]
             pk = context.primary_keys.get(names[0], [])
@@ -875,12 +891,17 @@ class Generator:
         )
         join_cols = ", ".join(f"r1.{a}" for a in self._universal_col_names())
 
+        nullable_set = set(self._build_guard_hierarchy().nullable_cols)
+
+        def _eq(a: str) -> str:
+            if a in nullable_set:
+                return f"r1.{a} IS NOT DISTINCT FROM temp_table_join.{a}"
+            return f"r1.{a} = temp_table_join.{a}"
+
         if len(source.tables) == 1:
             src = source.tables[0]
             src_pk = source.primary_keys.get(src.name, [])
-            join_cond = " AND ".join(
-                f"r1.{a} = temp_table_join.{a}" for a in src.attributes
-            )
+            join_cond = " AND ".join(_eq(a) for a in src.attributes)
             return [
                 {
                     "main_table": src.name,
@@ -898,9 +919,7 @@ class Generator:
         checks = []
         for dep in source.tables[1:]:
             dep_pk = source.primary_keys.get(dep.name, [])
-            join_cond = " AND ".join(
-                f"r1.{a} = temp_table_join.{a}" for a in dep.attributes
-            )
+            join_cond = " AND ".join(_eq(a) for a in dep.attributes)
             checks.append(
                 {
                     "main_table": main.name,

@@ -16,7 +16,7 @@ BEGIN
     );
 
     INSERT INTO temp_table_join (
-        SELECT {{ universal_col_names | join(', ') }}
+        SELECT DISTINCT {{ universal_col_names | join(', ') }}
         FROM {{ schema }}._{{ source_tables[0] }}_DELETE_JOIN
 {% for tbl in source_tables[1:] %}
         NATURAL LEFT OUTER JOIN {{ schema }}._{{ tbl }}_DELETE_JOIN

@@ -27,7 +27,7 @@ BEGIN
 {% if prune_rules is defined and prune_rules %}
     -- Tuple containment: keep only most informative tuples
 {% for rule in prune_rules %}
-    IF EXISTS (SELECT * FROM temp_table_join WHERE {{ rule.richer_condition }}) THEN
+    IF EXISTS (SELECT * FROM temp_table_join WHERE {{ rule.richer_check }}) THEN
         DELETE FROM temp_table_join t_poor
         WHERE {{ rule.poorer_condition }}
         AND EXISTS (
