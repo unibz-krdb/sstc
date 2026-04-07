@@ -335,7 +335,8 @@ class Generator:
 
         return branches
 
-    def _build_containment_pruning(self, hierarchy: GuardHierarchy) -> list[dict]:
+    @staticmethod
+    def _build_containment_pruning(hierarchy: GuardHierarchy) -> list[dict]:
         """Build pruning rules to remove less-informative tuples after JOIN."""
         if len(hierarchy.levels) <= 1 or not hierarchy.nullable_cols:
             return []
@@ -371,24 +372,32 @@ class Generator:
 
         return rules
 
-    def _build_null_pattern_where(self, hierarchy: GuardHierarchy) -> str:
+    @staticmethod
+    def _build_null_pattern_where(hierarchy: GuardHierarchy) -> str:
         """Build WHERE clause with valid null-pattern disjunction."""
         parts = []
 
-        # Mandatory columns always NOT NULL
-        if hierarchy.mandatory_cols:
+        # Identity columns always NOT NULL (mandatory, or source PK as fallback)
+        id_cols = hierarchy.mandatory_cols or hierarchy.source_pk
+        if id_cols:
             parts.append(
-                " AND ".join(f"{c} IS NOT NULL" for c in hierarchy.mandatory_cols)
+                " AND ".join(f"{c} IS NOT NULL" for c in id_cols)
             )
 
         if not hierarchy.nullable_cols:
+            return " AND ".join(parts) if parts else "TRUE"
+
+        # Exclude identity columns from the disjunction
+        pattern_nullable = [c for c in hierarchy.nullable_cols if c not in id_cols]
+
+        if not pattern_nullable:
             return " AND ".join(parts) if parts else "TRUE"
 
         # Valid null-pattern branches (one per hierarchy level)
         branches = []
         for level in hierarchy.levels:
             branch_parts = []
-            for col in hierarchy.nullable_cols:
+            for col in pattern_nullable:
                 if col in level.not_null_cols:
                     branch_parts.append(f"{col} IS NOT NULL")
                 else:

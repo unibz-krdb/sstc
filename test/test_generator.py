@@ -540,3 +540,21 @@ def test_full_compile_example2(example_2_dir: str):
     assert "DO NOTHING" in sql
     assert "NATURAL LEFT OUTER JOIN" in sql
     assert "ABS(loop_start)" in sql
+
+
+def test_null_pattern_where_example1_requires_pk_not_null(example_1_dir: str):
+    """Regression: all-nullable schema must require source PK NOT NULL in WHERE."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    hierarchy = gen._build_guard_hierarchy()
+    where = gen._build_null_pattern_where(hierarchy)
+
+    # Source PK must always be NOT NULL
+    assert where.startswith("ssn IS NOT NULL")
+
+    # ssn must not appear as IS NULL anywhere in the WHERE
+    assert "ssn IS NULL" not in where
