@@ -25,17 +25,17 @@ BEGIN
     );
 
 {% for check in independence_checks %}
-    IF EXISTS (SELECT {{ check.join_cols }}
+    DELETE FROM {{ schema }}._{{ check.main_table }} WHERE ({{ check.pk | join(', ') }}) IN (SELECT {{ check.pk | join(', ') }} FROM temp_table_join);
+{% if check.dependent_deletes %}
+    IF NOT EXISTS (SELECT {{ check.join_cols }}
         FROM ({{ check.join_source }}) AS r1, temp_table_join
         WHERE {{ check.join_condition }}
         EXCEPT SELECT * FROM temp_table_join) THEN
-        DELETE FROM {{ schema }}._{{ check.main_table }} WHERE ({{ check.pk | join(', ') }}) IN (SELECT {{ check.pk | join(', ') }} FROM temp_table_join);
-    ELSE
-        DELETE FROM {{ schema }}._{{ check.main_table }} WHERE ({{ check.pk | join(', ') }}) IN (SELECT {{ check.pk | join(', ') }} FROM temp_table_join);
 {% for dep_tbl in check.dependent_deletes %}
         DELETE FROM {{ schema }}._{{ dep_tbl.name }} WHERE ({{ dep_tbl.pk | join(', ') }}) IN (SELECT {{ dep_tbl.pk | join(', ') }} FROM temp_table_join);
 {% endfor %}
     END IF;
+{% endif %}
 {% endfor %}
 
 {% else %}
