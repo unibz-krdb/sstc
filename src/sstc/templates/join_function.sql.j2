@@ -17,9 +17,11 @@ BEGIN
     );
 
 {% for tbl in all_tables %}
+{% if loop.last %}
+    INSERT INTO {{ schema }}._loop VALUES ({{ loop_value }});
+{% endif %}
     INSERT INTO {{ schema }}._{{ tbl.name }}_{{ suffix }}_JOIN (SELECT {{ tbl.attrs | join(', ') }} FROM temp_table);
 {% endfor %}
-    INSERT INTO {{ schema }}._loop VALUES ({{ loop_value }});
 
     DELETE FROM temp_table;
     DROP TABLE temp_table;

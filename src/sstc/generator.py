@@ -295,8 +295,14 @@ class Generator:
         lhs_attrs: list[str],
         rhs_attrs: list[str],
         guard_attrs: list[str],
+        hierarchy: GuardHierarchy,
     ) -> list[str]:
-        """Build exhaustive WHERE OR-branches for a CFD check."""
+        """Build exhaustive WHERE OR-branches for a CFD check.
+
+        Uses the guard hierarchy to determine which null-patterns are valid
+        at each specialization level, generating branches only for states
+        that genuinely violate the hierarchy.
+        """
         branches: list[str] = []
 
         # Branch 1: Main FD violation — all guards non-NULL, LHS match, RHS differ
@@ -305,30 +311,49 @@ class Generator:
         rhs_differ = " AND ".join(f"R1.{a} <> R2.{a}" for a in rhs_attrs)
         branches.append(f"({guard_not_null} AND {lhs_match} AND {rhs_differ})")
 
-        # Invalid states: LHS NULL but RHS non-NULL
-        for rhs_attr in rhs_attrs:
-            for lhs_attr in lhs_attrs:
-                branch = f"(R2.{lhs_attr} IS NULL AND R2.{rhs_attr} IS NOT NULL)"
-                if branch not in branches:
-                    branches.append(branch)
+        # Find level-groups: new attrs added at each hierarchy level
+        level_groups: list[list[str]] = []
+        for i, level in enumerate(hierarchy.levels):
+            prev = set(hierarchy.levels[i - 1].not_null_cols) if i > 0 else set()
+            new = [c for c in level.not_null_cols if c not in prev]
+            if new:
+                level_groups.append(new)
 
-        # Invalid states: non-LHS guard attr NULL but RHS non-NULL
-        non_lhs_guards = [g for g in guard_attrs if g not in lhs_attrs]
-        for rhs_attr in rhs_attrs:
-            for g in non_lhs_guards:
-                if g == rhs_attr:
-                    continue
-                branch = f"(R2.{g} IS NULL AND R2.{rhs_attr} IS NOT NULL)"
-                if branch not in branches:
-                    branches.append(branch)
+        def find_group(attr: str) -> list[str]:
+            for group in level_groups:
+                if attr in group:
+                    return group
+            return [attr]
 
-        # Joint-null violations: guard attrs must be jointly defined or jointly NULL.
-        # If one guard attr is non-NULL and another is NULL, that's invalid.
-        for i, a1 in enumerate(guard_attrs):
-            for a2 in guard_attrs[i + 1 :]:
+        def find_group_index(attr: str) -> int:
+            for i, group in enumerate(level_groups):
+                if attr in group:
+                    return i
+            return -1
+
+        rhs_group = find_group(rhs_attrs[0])
+        lhs_idx = find_group_index(lhs_attrs[0])
+        rhs_idx = find_group_index(rhs_attrs[0])
+        cross_level = lhs_idx != rhs_idx
+
+        # Cross-level: LHS NULL → no RHS-group attr can be NOT NULL
+        if cross_level:
+            for x in lhs_attrs:
+                for r in rhs_group:
+                    b = f"(R2.{x} IS NULL AND R2.{r} IS NOT NULL)"
+                    if b not in branches:
+                        branches.append(b)
+
+        # Coherence within RHS level-group: attrs must be jointly defined
+        for i, a1 in enumerate(rhs_group):
+            for a2 in rhs_group[i + 1 :]:
+                if cross_level:
+                    prefix = f"R2.{lhs_attrs[0]} IS NOT NULL AND "
+                else:
+                    prefix = ""
                 for b in [
-                    f"(R2.{a1} IS NOT NULL AND R2.{a2} IS NULL)",
-                    f"(R2.{a1} IS NULL AND R2.{a2} IS NOT NULL)",
+                    f"({prefix}R2.{a1} IS NOT NULL AND R2.{a2} IS NULL)",
+                    f"({prefix}R2.{a1} IS NULL AND R2.{a2} IS NOT NULL)",
                 ]:
                     if b not in branches:
                         branches.append(b)
@@ -439,6 +464,7 @@ class Generator:
         if not fds:
             return ""
 
+        hierarchy = self._build_guard_hierarchy()
         parts = []
         for i, fd in enumerate(fds, 1):
             lhs_attrs = list(fd.attributes)[:-1]
@@ -456,7 +482,7 @@ class Generator:
             if guard_attrs:
                 # Guarded FD -> CFD template with exhaustive OR branches
                 where_branches = self._build_cfd_where_branches(
-                    lhs_attrs, rhs_attrs, guard_attrs
+                    lhs_attrs, rhs_attrs, guard_attrs, hierarchy
                 )
                 parts.append(
                     self._render(
@@ -844,7 +870,7 @@ class Generator:
         the same data.
         """
         src_names = [t.name for t in source.tables]
-        join_source = " NATURAL LEFT OUTER JOIN ".join(
+        join_source = "SELECT * FROM " + " NATURAL LEFT OUTER JOIN ".join(
             f"{self.schema}._{n}" for n in src_names
         )
         join_cols = ", ".join(f"r1.{a}" for a in self._universal_col_names())

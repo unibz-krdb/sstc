@@ -637,8 +637,26 @@ def test_null_pattern_where_single_level():
 
 def test_cfd_branches_simple_2attr_guard():
     """empid -> hdate with guard {empid, hdate} -> exactly 3 branches."""
+    h = GuardHierarchy(
+        mandatory_cols=[],
+        nullable_cols=["empid", "hdate"],
+        levels=[
+            GuardLevel(
+                guard_attrs=set(), not_null_cols=[], null_cols=["empid", "hdate"]
+            ),
+            GuardLevel(
+                guard_attrs={"empid", "hdate"},
+                not_null_cols=["empid", "hdate"],
+                null_cols=[],
+            ),
+        ],
+        source_pk=["ssn"],
+    )
     branches = Generator._build_cfd_where_branches(
-        lhs_attrs=["empid"], rhs_attrs=["hdate"], guard_attrs=["empid", "hdate"]
+        lhs_attrs=["empid"],
+        rhs_attrs=["hdate"],
+        guard_attrs=["empid", "hdate"],
+        hierarchy=h,
     )
     assert len(branches) == 3
     assert "R1.empid = R2.empid" in branches[0]
@@ -648,25 +666,67 @@ def test_cfd_branches_simple_2attr_guard():
 
 
 def test_cfd_branches_complex_4attr_guard():
-    """empid -> dept with guard {empid, hdate, dept, manager} -> 14 branches."""
+    """empid -> dept with guard {empid, hdate, dept, manager} -> 5 branches.
+
+    Matches reference SQL: 1 main + 2 cross-level + 2 coherence.
+    """
+    h = GuardHierarchy(
+        mandatory_cols=[],
+        nullable_cols=["empid", "hdate", "dept", "manager"],
+        levels=[
+            GuardLevel(
+                guard_attrs=set(),
+                not_null_cols=[],
+                null_cols=["empid", "hdate", "dept", "manager"],
+            ),
+            GuardLevel(
+                guard_attrs={"empid", "hdate"},
+                not_null_cols=["empid", "hdate"],
+                null_cols=["dept", "manager"],
+            ),
+            GuardLevel(
+                guard_attrs={"empid", "hdate", "dept", "manager"},
+                not_null_cols=["empid", "hdate", "dept", "manager"],
+                null_cols=[],
+            ),
+        ],
+        source_pk=["ssn"],
+    )
     branches = Generator._build_cfd_where_branches(
         lhs_attrs=["empid"],
         rhs_attrs=["dept"],
         guard_attrs=["empid", "hdate", "dept", "manager"],
+        hierarchy=h,
     )
-    assert len(branches) == 14
+    assert len(branches) == 5
     assert "R1.empid = R2.empid AND R1.dept <> R2.dept" in branches[0]
+    # Cross-level: LHS NULL -> no RHS-group attr NOT NULL
     assert "(R2.empid IS NULL AND R2.dept IS NOT NULL)" in branches
-    assert "(R2.hdate IS NULL AND R2.dept IS NOT NULL)" in branches
-    assert "(R2.manager IS NULL AND R2.dept IS NOT NULL)" in branches
-    assert "(R2.dept IS NOT NULL AND R2.manager IS NULL)" in branches
-    assert "(R2.dept IS NULL AND R2.manager IS NOT NULL)" in branches
+    assert "(R2.empid IS NULL AND R2.manager IS NOT NULL)" in branches
+    # Coherence: dept and manager must be jointly defined
+    assert (
+        "(R2.empid IS NOT NULL AND R2.dept IS NOT NULL AND R2.manager IS NULL)"
+        in branches
+    )
+    assert (
+        "(R2.empid IS NOT NULL AND R2.dept IS NULL AND R2.manager IS NOT NULL)"
+        in branches
+    )
 
 
 def test_cfd_branches_no_duplicates():
     """No duplicate branches regardless of attr overlap."""
+    h = GuardHierarchy(
+        mandatory_cols=[],
+        nullable_cols=["a", "b"],
+        levels=[
+            GuardLevel(guard_attrs=set(), not_null_cols=[], null_cols=["a", "b"]),
+            GuardLevel(guard_attrs={"a", "b"}, not_null_cols=["a", "b"], null_cols=[]),
+        ],
+        source_pk=["pk"],
+    )
     branches = Generator._build_cfd_where_branches(
-        lhs_attrs=["a"], rhs_attrs=["b"], guard_attrs=["a", "b"]
+        lhs_attrs=["a"], rhs_attrs=["b"], guard_attrs=["a", "b"], hierarchy=h
     )
     assert len(branches) == len(set(branches))
 
