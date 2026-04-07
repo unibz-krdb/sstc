@@ -478,3 +478,53 @@ def test_tuple_containment_pruning_example2(example_2_dir: str):
 
     # Should delete poorer tuples where nullable cols are NULL
     assert "empid IS NULL" in target_fn
+
+
+def test_full_compile_example2(example_2_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    sql = Generator(ctx).compile()
+
+    # Schema infrastructure
+    assert "DROP SCHEMA IF EXISTS transducer CASCADE" in sql
+    assert "CREATE SCHEMA transducer" in sql
+    assert "CREATE TABLE transducer._loop" in sql
+
+    # Base tables: 1 source + 8 target = 9
+    # Tracking: 9 x 2 = 18
+    # Join staging: 9 x 2 = 18
+    # Total CREATE TABLE: 9 + 18 + 18 + 1 (loop) = 46
+    create_count = sql.count("CREATE TABLE transducer.")
+    assert create_count == 46, f"Expected 46 CREATE TABLE, got {create_count}"
+
+    # Functions: 2 MVD + 3 CFD + 1 INC + 18 capture + 18 join + 4 mapping = 46
+    fn_count = sql.count("CREATE OR REPLACE FUNCTION")
+    assert fn_count == 46, f"Expected 46 functions, got {fn_count}"
+
+    # Triggers: 2 MVD + 3 CFD + 1 INC + 18 capture + 18 join + 18 mapping = 60
+    trigger_count = sql.count("CREATE TRIGGER")
+    assert trigger_count == 60, f"Expected 60 triggers, got {trigger_count}"
+
+    # Composite PK on source
+    assert "PRIMARY KEY (ssn, phone, email)" in sql
+
+    # NOT NULL on mandatory columns
+    assert "ssn VARCHAR(100) NOT NULL" in sql
+    assert "name VARCHAR(100) NOT NULL" in sql
+
+    # Mapping functions present
+    assert "SOURCE_INSERT_FN" in sql
+    assert "TARGET_INSERT_FN" in sql
+    assert "SOURCE_DELETE_FN" in sql
+    assert "TARGET_DELETE_FN" in sql
+
+    # Key patterns from design
+    assert "IF EXISTS" in sql  # Conditional INSERTs
+    assert "empid IS NULL AND hdate IS NULL" in sql  # Null-pattern WHERE
+    assert "ON CONFLICT" in sql
+    assert "DO NOTHING" in sql
+    assert "NATURAL LEFT OUTER JOIN" in sql
+    assert "ABS(loop_start)" in sql
