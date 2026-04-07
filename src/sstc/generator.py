@@ -288,8 +288,8 @@ class Generator:
             source_pk=src_pk,
         )
 
+    @staticmethod
     def _build_cfd_where_branches(
-        self,
         lhs_attrs: list[str],
         rhs_attrs: list[str],
         guard_attrs: list[str],

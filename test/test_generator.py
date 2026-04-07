@@ -374,7 +374,7 @@ def test_cfd_exhaustive_checks_example2(example_2_dir: str):
     result = gen._constraints()
 
     # 3 CFD check functions (guarded FDs -> CFD template)
-    assert result.lower().count("check_person_source_cfd") >= 3
+    assert result.lower().count("check_person_source_cfd") == 6
 
     # CFD_1 (empid -> hdate, guard {empid, hdate}):
     assert "R2.empid IS NULL AND R2.hdate IS NOT NULL" in result
