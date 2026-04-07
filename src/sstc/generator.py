@@ -380,9 +380,7 @@ class Generator:
         # Identity columns always NOT NULL (mandatory, or source PK as fallback)
         id_cols = hierarchy.mandatory_cols or hierarchy.source_pk
         if id_cols:
-            parts.append(
-                " AND ".join(f"{c} IS NOT NULL" for c in id_cols)
-            )
+            parts.append(" AND ".join(f"{c} IS NOT NULL" for c in id_cols))
 
         if not hierarchy.nullable_cols:
             return " AND ".join(parts) if parts else "TRUE"

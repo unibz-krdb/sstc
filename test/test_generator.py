@@ -4,7 +4,7 @@ from fixtures import example_1_dir as example_1_dir
 from fixtures import example_2_dir as example_2_dir
 
 from sstc import TransducerContext
-from sstc.generator import Generator
+from sstc.generator import Generator, GuardHierarchy, GuardLevel
 
 
 def test_preamble(example_1_dir: str):
@@ -558,3 +558,283 @@ def test_null_pattern_where_example1_requires_pk_not_null(example_1_dir: str):
 
     # ssn must not appear as IS NULL anywhere in the WHERE
     assert "ssn IS NULL" not in where
+
+
+# --- Unit tests for _build_null_pattern_where ---
+
+
+def test_null_pattern_where_all_mandatory():
+    """All mandatory cols, no nullable -> just NOT NULL conjunction."""
+    h = GuardHierarchy(
+        mandatory_cols=["a", "b"],
+        nullable_cols=[],
+        levels=[GuardLevel(guard_attrs=set(), not_null_cols=[], null_cols=[])],
+        source_pk=["a"],
+    )
+    result = Generator._build_null_pattern_where(h)
+    assert result == "a IS NOT NULL AND b IS NOT NULL"
+
+
+def test_null_pattern_where_mixed():
+    """Mandatory prefix + disjunction for nullable cols."""
+    h = GuardHierarchy(
+        mandatory_cols=["ssn", "name"],
+        nullable_cols=["empid", "hdate"],
+        levels=[
+            GuardLevel(
+                guard_attrs=set(), not_null_cols=[], null_cols=["empid", "hdate"]
+            ),
+            GuardLevel(
+                guard_attrs={"empid", "hdate"},
+                not_null_cols=["empid", "hdate"],
+                null_cols=[],
+            ),
+        ],
+        source_pk=["ssn"],
+    )
+    result = Generator._build_null_pattern_where(h)
+    assert result.startswith("ssn IS NOT NULL AND name IS NOT NULL")
+    assert "(empid IS NULL AND hdate IS NULL)" in result
+    assert "(empid IS NOT NULL AND hdate IS NOT NULL)" in result
+
+
+def test_null_pattern_where_all_nullable_uses_source_pk():
+    """All nullable schema: source_pk used as identity prefix, excluded from branches."""
+    h = GuardHierarchy(
+        mandatory_cols=[],
+        nullable_cols=["pk1", "a", "b"],
+        levels=[
+            GuardLevel(
+                guard_attrs=set(), not_null_cols=[], null_cols=["pk1", "a", "b"]
+            ),
+            GuardLevel(
+                guard_attrs={"a", "b"}, not_null_cols=["a", "b"], null_cols=["pk1"]
+            ),
+        ],
+        source_pk=["pk1"],
+    )
+    result = Generator._build_null_pattern_where(h)
+    assert result.startswith("pk1 IS NOT NULL")
+    assert "pk1 IS NULL" not in result
+    assert "(a IS NULL AND b IS NULL)" in result
+    assert "(a IS NOT NULL AND b IS NOT NULL)" in result
+
+
+def test_null_pattern_where_single_level():
+    """Single level -> one-branch disjunction."""
+    h = GuardHierarchy(
+        mandatory_cols=["pk"],
+        nullable_cols=["x"],
+        levels=[GuardLevel(guard_attrs=set(), not_null_cols=[], null_cols=["x"])],
+        source_pk=["pk"],
+    )
+    result = Generator._build_null_pattern_where(h)
+    assert result == "pk IS NOT NULL AND ((x IS NULL))"
+
+
+# --- Unit tests for _build_cfd_where_branches ---
+
+
+def test_cfd_branches_simple_2attr_guard():
+    """empid -> hdate with guard {empid, hdate} -> exactly 3 branches."""
+    branches = Generator._build_cfd_where_branches(
+        lhs_attrs=["empid"], rhs_attrs=["hdate"], guard_attrs=["empid", "hdate"]
+    )
+    assert len(branches) == 3
+    assert "R1.empid = R2.empid" in branches[0]
+    assert "R1.hdate <> R2.hdate" in branches[0]
+    assert "(R2.empid IS NULL AND R2.hdate IS NOT NULL)" in branches
+    assert "(R2.empid IS NOT NULL AND R2.hdate IS NULL)" in branches
+
+
+def test_cfd_branches_complex_4attr_guard():
+    """empid -> dept with guard {empid, hdate, dept, manager} -> 14 branches."""
+    branches = Generator._build_cfd_where_branches(
+        lhs_attrs=["empid"],
+        rhs_attrs=["dept"],
+        guard_attrs=["empid", "hdate", "dept", "manager"],
+    )
+    assert len(branches) == 14
+    assert "R1.empid = R2.empid AND R1.dept <> R2.dept" in branches[0]
+    assert "(R2.empid IS NULL AND R2.dept IS NOT NULL)" in branches
+    assert "(R2.hdate IS NULL AND R2.dept IS NOT NULL)" in branches
+    assert "(R2.manager IS NULL AND R2.dept IS NOT NULL)" in branches
+    assert "(R2.dept IS NOT NULL AND R2.manager IS NULL)" in branches
+    assert "(R2.dept IS NULL AND R2.manager IS NOT NULL)" in branches
+
+
+def test_cfd_branches_no_duplicates():
+    """No duplicate branches regardless of attr overlap."""
+    branches = Generator._build_cfd_where_branches(
+        lhs_attrs=["a"], rhs_attrs=["b"], guard_attrs=["a", "b"]
+    )
+    assert len(branches) == len(set(branches))
+
+
+# --- Unit tests for _build_containment_pruning ---
+
+
+def test_containment_pruning_multi_level(example_1_dir: str):
+    """3 levels -> 2 pruning rules, identity uses source_pk."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    hierarchy = gen._build_guard_hierarchy()
+    rules = Generator._build_containment_pruning(hierarchy)
+
+    assert len(rules) == 2
+    assert "empid IS NOT NULL" in rules[0]["richer_condition"]
+    assert "hdate IS NOT NULL" in rules[0]["richer_condition"]
+    assert "empid IS NULL" in rules[0]["poorer_condition"]
+    assert rules[0]["identity_match"] == "t_rich.ssn = t_poor.ssn"
+
+
+def test_containment_pruning_single_level():
+    """Single hierarchy level -> no pruning rules."""
+    h = GuardHierarchy(
+        mandatory_cols=["pk"],
+        nullable_cols=["x"],
+        levels=[GuardLevel(guard_attrs=set(), not_null_cols=[], null_cols=["x"])],
+        source_pk=["pk"],
+    )
+    assert Generator._build_containment_pruning(h) == []
+
+
+def test_containment_pruning_no_nullable():
+    """No nullable columns -> no pruning needed."""
+    h = GuardHierarchy(
+        mandatory_cols=["a", "b"],
+        nullable_cols=[],
+        levels=[
+            GuardLevel(guard_attrs=set(), not_null_cols=[], null_cols=[]),
+            GuardLevel(guard_attrs={"a"}, not_null_cols=[], null_cols=[]),
+        ],
+        source_pk=["a"],
+    )
+    assert Generator._build_containment_pruning(h) == []
+
+
+def test_containment_pruning_identity_uses_mandatory(example_2_dir: str):
+    """When mandatory_cols is non-empty, identity_match uses mandatory_cols."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    hierarchy = gen._build_guard_hierarchy()
+    rules = Generator._build_containment_pruning(hierarchy)
+
+    assert len(rules) == 2
+    for rule in rules:
+        assert "t_rich.ssn = t_poor.ssn" in rule["identity_match"]
+        assert "t_rich.name = t_poor.name" in rule["identity_match"]
+        assert "t_rich.phone = t_poor.phone" in rule["identity_match"]
+        assert "t_rich.email = t_poor.email" in rule["identity_match"]
+
+
+# --- Unit tests for _extract_table_guard_attrs ---
+
+
+def test_extract_guard_attrs_guarded(example_1_dir: str):
+    """Table with SelectNode -> returns guard attrs."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    employee = next(t for t in ctx.target.tables if t.name == "employee")
+    assert set(gen._extract_table_guard_attrs(employee)) == {"empid", "hdate"}
+
+
+def test_extract_guard_attrs_unguarded(example_1_dir: str):
+    """Table without SelectNode -> returns empty list."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    person = next(t for t in ctx.target.tables if t.name == "person")
+    assert gen._extract_table_guard_attrs(person) == []
+
+
+# --- Unit tests for _inc_sql ---
+
+
+def test_inc_sql_intra_table(example_1_dir: str):
+    """Self-referencing INC on same table -> generates trigger function."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._inc_sql(ctx.source)
+    assert result != ""
+    assert "check_person_source_inc_1_fn" in result
+    assert "BEFORE INSERT" in result
+    assert "EXCEPT" in result
+
+
+def test_inc_sql_inter_table_skipped(example_1_dir: str):
+    """Inter-table INC -> returns empty string (handled by FK)."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._inc_sql(ctx.target)
+    assert result == ""
+
+
+# --- Integration tests ---
+
+
+def test_example1_target_insert_where_structural(example_1_dir: str):
+    """Example1 TARGET_INSERT_FN: ssn IS NOT NULL in WHERE, no ssn IS NULL."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_1_dir, "universal.json"),
+        source_path=os.path.join(example_1_dir, "source.txt"),
+        target_path=os.path.join(example_1_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._mapping()
+
+    target_fn_start = result.index("TARGET_INSERT_FN")
+    target_fn_end = result.index("SOURCE_DELETE_FN")
+    target_fn = result[target_fn_start:target_fn_end]
+
+    # Find the main WHERE clause (on temp_table_join INSERT, not pruning/loop)
+    where_lines = [
+        line.strip()
+        for line in target_fn.split("\n")
+        if "WHERE" in line and "loop" not in line and "t_rich" not in line
+    ]
+    main_where = where_lines[0] if where_lines else ""
+
+    assert "ssn IS NOT NULL" in main_where
+    assert "ssn IS NULL" not in main_where
+
+
+def test_example2_delete_path_where(example_2_dir: str):
+    """TARGET_DELETE_FN uses null-pattern WHERE with mandatory cols."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._mapping()
+
+    del_start = result.index("TARGET_DELETE_FN")
+    del_fn = result[del_start:]
+
+    assert "ssn IS NOT NULL" in del_fn
+    assert "name IS NOT NULL" in del_fn
+    assert "empid IS NULL AND hdate IS NULL" in del_fn

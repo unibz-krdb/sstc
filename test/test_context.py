@@ -1,6 +1,7 @@
 import os
 
 from fixtures import example_1_dir as example_1_dir
+from fixtures import example_2_dir as example_2_dir
 
 from rapt2.treebrd.node import (
     FunctionalDependencyNode,
@@ -99,3 +100,27 @@ def test_context_constraint_nodes(example_1_dir: str):
     tgt = ctx.target
     assert len(tgt.inclusion_equivalences) == 5
     assert len(tgt.inclusion_subsumptions) == 3
+
+
+def test_example2_context_primary_keys(example_2_dir: str):
+    """Example2 composite PK (ssn, phone, email) correctly parsed."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    assert ctx.source.primary_keys["person_source"] == ["ssn", "phone", "email"]
+
+
+def test_example2_context_nullability(example_2_dir: str):
+    """Example2 mixed nullability: 4 mandatory, 4 nullable."""
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    schema = ctx.source.tables[0].universal_schema
+    mandatory = [a.name for a in schema if not a.is_nullable]
+    nullable = [a.name for a in schema if a.is_nullable]
+    assert set(mandatory) == {"ssn", "name", "phone", "email"}
+    assert set(nullable) == {"empid", "hdate", "dept", "manager"}
