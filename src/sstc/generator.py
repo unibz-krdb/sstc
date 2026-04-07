@@ -268,12 +268,14 @@ class Generator:
             not_null = [c for c in nullable_cols if c in cumulative]
             null = [c for c in nullable_cols if c not in cumulative]
 
-            levels.append(GuardLevel(
-                guard_attrs=set(guard_frozen),
-                tables=tables,
-                not_null_cols=not_null,
-                null_cols=null,
-            ))
+            levels.append(
+                GuardLevel(
+                    guard_attrs=set(guard_frozen),
+                    tables=tables,
+                    not_null_cols=not_null,
+                    null_cols=null,
+                )
+            )
 
         src_pk: list[str] = []
         for t in self.ctx.source.tables:
@@ -333,9 +335,7 @@ class Generator:
 
         return branches
 
-    def _build_containment_pruning(
-        self, hierarchy: GuardHierarchy
-    ) -> list[dict]:
+    def _build_containment_pruning(self, hierarchy: GuardHierarchy) -> list[dict]:
         """Build pruning rules to remove less-informative tuples after JOIN."""
         if len(hierarchy.levels) <= 1 or not hierarchy.nullable_cols:
             return []
@@ -355,19 +355,19 @@ class Generator:
             richer_condition = " AND ".join(
                 f"{c} IS NOT NULL" for c in richer.not_null_cols
             )
-            poorer_condition = " AND ".join(
-                f"{c} IS NULL" for c in new_not_null
-            )
+            poorer_condition = " AND ".join(f"{c} IS NULL" for c in new_not_null)
             identity_match = " AND ".join(
                 f"t_rich.{c} = t_poor.{c}"
                 for c in (hierarchy.mandatory_cols or hierarchy.source_pk)
             )
 
-            rules.append({
-                "richer_condition": richer_condition,
-                "poorer_condition": poorer_condition,
-                "identity_match": identity_match,
-            })
+            rules.append(
+                {
+                    "richer_condition": richer_condition,
+                    "poorer_condition": poorer_condition,
+                    "identity_match": identity_match,
+                }
+            )
 
         return rules
 
@@ -614,8 +614,7 @@ class Generator:
                 "attrs": t.attributes,
                 "pk": target.primary_keys.get(t.name, []),
                 "guard_check": " AND ".join(
-                    f"{a} IS NOT NULL"
-                    for a in self._extract_table_guard_attrs(t)
+                    f"{a} IS NOT NULL" for a in self._extract_table_guard_attrs(t)
                 ),
             }
             for t in target.tables

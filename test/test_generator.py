@@ -325,7 +325,14 @@ def test_guard_hierarchy_example1(example_1_dir: str):
     # example1: all columns nullable
     assert hierarchy.mandatory_cols == []
     assert set(hierarchy.nullable_cols) == {
-        "ssn", "empid", "name", "hdate", "phone", "email", "dept", "manager"
+        "ssn",
+        "empid",
+        "name",
+        "hdate",
+        "phone",
+        "email",
+        "dept",
+        "manager",
     }
 
     # 3 distinct guard levels: {}, {empid,hdate}, {empid,hdate,dept,manager}
@@ -360,7 +367,12 @@ def test_guard_hierarchy_example2(example_2_dir: str):
     assert set(hierarchy.levels[1].null_cols) == {"dept", "manager"}
 
     # Level 2: all NOT NULL
-    assert set(hierarchy.levels[2].not_null_cols) == {"empid", "hdate", "dept", "manager"}
+    assert set(hierarchy.levels[2].not_null_cols) == {
+        "empid",
+        "hdate",
+        "dept",
+        "manager",
+    }
     assert hierarchy.levels[2].null_cols == []
 
 
