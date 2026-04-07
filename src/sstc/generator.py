@@ -333,6 +333,35 @@ class Generator:
 
         return branches
 
+    def _build_null_pattern_where(self, hierarchy: GuardHierarchy) -> str:
+        """Build WHERE clause with valid null-pattern disjunction."""
+        parts = []
+
+        # Mandatory columns always NOT NULL
+        if hierarchy.mandatory_cols:
+            parts.append(
+                " AND ".join(f"{c} IS NOT NULL" for c in hierarchy.mandatory_cols)
+            )
+
+        if not hierarchy.nullable_cols:
+            return " AND ".join(parts) if parts else "TRUE"
+
+        # Valid null-pattern branches (one per hierarchy level)
+        branches = []
+        for level in hierarchy.levels:
+            branch_parts = []
+            for col in hierarchy.nullable_cols:
+                if col in level.not_null_cols:
+                    branch_parts.append(f"{col} IS NOT NULL")
+                else:
+                    branch_parts.append(f"{col} IS NULL")
+            branches.append("(" + " AND ".join(branch_parts) + ")")
+
+        pattern_clause = "(" + " OR ".join(branches) + ")"
+        parts.append(pattern_clause)
+
+        return " AND ".join(parts)
+
     def _inc_sql(self, context: Context) -> str:
         """Generate trigger-based INC enforcement for intra-table inclusion dependencies."""
         parts = []
@@ -582,7 +611,8 @@ class Generator:
             info["where_not_null"] = " AND ".join(
                 f"{a} IS NOT NULL" for a in where_cols
             )
-        tgt_insert_where = " AND ".join(f"{a} IS NOT NULL" for a in universal_col_names)
+        hierarchy = self._build_guard_hierarchy()
+        tgt_insert_where = self._build_null_pattern_where(hierarchy)
 
         # --- SOURCE_INSERT_FN ---
         parts.append(

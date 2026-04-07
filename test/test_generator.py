@@ -429,3 +429,28 @@ def test_conditional_inserts_example2(example_2_dir: str):
     # Guarded tables should have IF EXISTS wrapping
     assert "IF EXISTS" in source_fn
     assert "empid IS NOT NULL AND hdate IS NOT NULL" in source_fn
+
+
+def test_null_pattern_where_example2(example_2_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._mapping()
+
+    # Extract TARGET_INSERT_FN section
+    target_fn_start = result.index("TARGET_INSERT_FN")
+    target_fn_end = result.index("SOURCE_DELETE_FN")
+    target_fn = result[target_fn_start:target_fn_end]
+
+    # Mandatory cols always NOT NULL
+    assert "ssn IS NOT NULL" in target_fn
+    assert "name IS NOT NULL" in target_fn
+    assert "phone IS NOT NULL" in target_fn
+    assert "email IS NOT NULL" in target_fn
+
+    # Null-pattern disjunction (not all-NOT-NULL)
+    assert "empid IS NULL AND hdate IS NULL" in target_fn
+    assert "empid IS NOT NULL AND hdate IS NOT NULL" in target_fn
