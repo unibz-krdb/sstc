@@ -6,65 +6,31 @@ constraint enforcement (MVDs, CFDs, INCs), insert/delete tracking,
 join staging, and bidirectional mapping functions with triggers.
 """
 
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import jinja2
 
-from rapt2.treebrd.condition_node import (
-    BinaryConditionNode,
-    UnaryConditionNode,
-    UnaryConditionalOperator,
-)
-from rapt2.treebrd.node import SelectNode, UnaryNode
-
+from .constraints import UnsupportedError as UnsupportedError
+from .constraints import constraints, foreign_keys
+from .constraints import inc_sql as _inc_sql_impl
 from .context import Context
+from .guard import (
+    GuardHierarchy as GuardHierarchy,
+    GuardLevel as GuardLevel,
+    build_cfd_where_branches,
+    build_containment_pruning,
+    build_guard_hierarchy,
+    build_null_pattern_where,
+    extract_table_guard_attrs,
+)
 from .table import Table
 from .transducer_context import TransducerContext
-
-
-class UnsupportedError(Exception):
-    """Raised when the generator encounters a constraint pattern it cannot compile."""
-
-    pass
 
 
 SOURCE_LOOP_CHECK = -1
 TARGET_LOOP_CHECK = 1
 SOURCE_LOOP_VALUE = 1
 TARGET_LOOP_VALUE = -1
-
-
-@dataclass
-class GuardLevel:
-    """A single level in the guard specialization hierarchy.
-
-    Each level corresponds to a set of guard attributes (nullable columns
-    that must be non-NULL for certain target tables to be populated).
-    Tracks which tables belong to this level and the cumulative null/not-null
-    partition of nullable columns up to this point.
-    """
-
-    guard_attrs: set[str]
-    tables: list[str] = field(default_factory=list)
-    not_null_cols: list[str] = field(default_factory=list)
-    null_cols: list[str] = field(default_factory=list)
-
-
-@dataclass
-class GuardHierarchy:
-    """The full specialization hierarchy derived from universal schema nullability and target guards.
-
-    Organizes target tables into levels ordered by increasing guard
-    specificity (more NOT NULL requirements). Used to generate CFD
-    enforcement branches, containment pruning rules, and valid
-    null-pattern WHERE clauses in mapping functions.
-    """
-
-    mandatory_cols: list[str]
-    nullable_cols: list[str]
-    levels: list[GuardLevel]
-    source_pk: list[str]
 
 
 class Generator:
@@ -76,6 +42,11 @@ class Generator:
     natural-join staging, and four bidirectional mapping functions
     (source/target x insert/delete) with their triggers.
     """
+
+    # Backward-compat aliases for tests calling Generator._build_* as static methods
+    _build_null_pattern_where = staticmethod(build_null_pattern_where)
+    _build_cfd_where_branches = staticmethod(build_cfd_where_branches)
+    _build_containment_pruning = staticmethod(build_containment_pruning)
 
     def __init__(self, ctx: TransducerContext, schema: str = "transducer"):
         self.ctx = ctx
@@ -156,458 +127,36 @@ class Generator:
                 parts.append(self._create_table(table, context))
         return "\n".join(parts)
 
-    def _emit_fk(
-        self, inc, pks: dict[str, list[str]], *, equivalence: bool
-    ) -> str | None:
-        """Emit an ALTER TABLE ADD FOREIGN KEY statement from an inclusion dependency.
-
-        For equivalence INCs (inc=), the direction is swapped so the second
-        relation references the first. For subsumption INCs (inc-subset),
-        the first relation references the second. Returns None if the
-        referenced columns do not form the referenced table's primary key.
-        """
-        names = list(inc.relation_names)
-        attrs = list(inc.attributes)
-        mid = len(attrs) // 2
-        if equivalence:
-            referenced_table, referencing_table = names[0], names[1]
-            referenced_cols, referencing_cols = attrs[:mid], attrs[mid:]
-        else:
-            referencing_table, referenced_table = names[0], names[1]
-            referencing_cols, referenced_cols = attrs[:mid], attrs[mid:]
-        ref_pk = pks.get(referenced_table, [])
-        if sorted(referenced_cols) != sorted(ref_pk):
-            return None
-        return (
-            f"ALTER TABLE {self.schema}._{referencing_table} "
-            f"ADD FOREIGN KEY ({', '.join(referencing_cols)}) "
-            f"REFERENCES {self.schema}._{referenced_table}"
-            f" ({', '.join(referenced_cols)});"
-        )
-
-    def _foreign_keys(self) -> str:
-        parts: list[str] = []
-        for context in [self.ctx.source, self.ctx.target]:
-            pks = context.primary_keys
-            for inc in context.inclusion_equivalences:
-                fk = self._emit_fk(inc, pks, equivalence=True)
-                if fk:
-                    parts.append(fk)
-            for inc in context.inclusion_subsumptions:
-                fk = self._emit_fk(inc, pks, equivalence=False)
-                if fk:
-                    parts.append(fk)
-        return "\n".join(parts) if parts else ""
-
-    def _mvd_sql(self, context: Context) -> str:
-        """Generate MVD enforcement for a context: a check function and a grounding function per table.
-
-        The check function is a trigger that rejects inserts violating the
-        MVD (same LHS, different RHS without complementary tuple). The
-        grounding function inserts the missing complementary tuples to
-        restore the 4th-normal-form property. Raises UnsupportedError if
-        a table has MVDs with non-shared LHS determinants.
-        """
-        mvds = context.multivalued_dependencies
-        if not mvds:
-            return ""
-
-        # Group MVDs by table name
-        mvds_by_table: dict[str, list] = {}
-        for mvd in mvds:
-            mvds_by_table.setdefault(mvd.relation_name, []).append(mvd)
-
-        parts = []
-        for table_name, table_mvds in mvds_by_table.items():
-            # RAPT2 convention: mvd_{a, b} stores attributes as [a, b]
-            # where attrs[:-1] = LHS determinant, attrs[-1:] = determined attribute
-            lhs_set = {tuple(list(m.attributes)[:-1]) for m in table_mvds}
-            if len(lhs_set) > 1:
-                raise UnsupportedError(
-                    f"Non-shared-LHS MVDs on {table_name}: {lhs_set}"
-                )
-            lhs_attrs = list(lhs_set.pop())
-            determined_attrs = [list(m.attributes)[-1] for m in table_mvds]
-
-            # Find table object for attribute list
-            table = self._find_table(table_name, context)
-            all_attrs = table.attributes
-
-            # MVD check: r1 for LHS+determined, r2 for rest
-            lhs_and_determined = set(lhs_attrs) | set(determined_attrs)
-            select_cols = ", ".join(
-                f"r1.{a}" if a in lhs_and_determined else f"r2.{a}" for a in all_attrs
-            )
-            new_cols = ", ".join(f"NEW.{a}" for a in all_attrs)
-            join_condition = " AND ".join(f"r1.{a} = r2.{a}" for a in lhs_attrs)
-
-            parts.append(
-                self._render(
-                    "mvd_check.sql.j2",
-                    table_name=table_name,
-                    select_cols=select_cols,
-                    new_cols=new_cols,
-                    join_condition=join_condition,
-                )
-            )
-
-            # MVD grounding: one UNION SELECT per determined attr
-            # Each SELECT swaps that determined attr with NEW, keeps rest from r1
-            union_selects = []
-            for det_attr in determined_attrs:
-                cols = ", ".join(
-                    f"NEW.{a}" if a == det_attr else f"r1.{a}" for a in all_attrs
-                )
-                union_selects.append({"cols": cols})
-
-            grounding_join = " AND ".join(f"r1.{a} = NEW.{a}" for a in lhs_attrs)
-
-            parts.append(
-                self._render(
-                    "mvd_grounding.sql.j2",
-                    table_name=table_name,
-                    union_selects=union_selects,
-                    join_condition=grounding_join,
-                )
-            )
-
-        return "\n\n".join(parts)
-
-    def _find_table(self, name: str, context: Context) -> Table:
-        """Look up a table by name in a context. Raises ValueError if not found."""
-        for table in context.tables:
-            if table.name == name:
-                return table
-        raise ValueError(f"Table {name} not found in context")
-
-    @staticmethod
-    def _extract_defined_attrs(cond) -> list[str]:
-        """Recursively extract attribute names from DEFINED(...) conditions in a condition tree."""
-        if isinstance(cond, UnaryConditionNode):
-            if cond.op == UnaryConditionalOperator.DEFINED:
-                return cond.child.attribute_references()
-            return []
-        if isinstance(cond, BinaryConditionNode):
-            return Generator._extract_defined_attrs(
-                cond.left
-            ) + Generator._extract_defined_attrs(cond.right)
-        return []
-
-    def _extract_table_guard_attrs(self, table: Table) -> list[str]:
-        """Extract guard attributes from a target table's select clause."""
-        node = table.definition.child  # Skip AssignNode → get ProjectNode
-        while node is not None:
-            if isinstance(node, SelectNode):
-                return self._extract_defined_attrs(node.conditions)
-            if isinstance(node, UnaryNode):
-                node = node.child
-            else:
-                return []
-        return []
-
     def _build_guard_hierarchy(self) -> GuardHierarchy:
         """Build (and cache) the specialization hierarchy from universal schema + target table guards."""
         if self._hierarchy is not None:
             return self._hierarchy
-
-        schema = self._universal_schema
-        mandatory_cols = [a.name for a in schema if not a.is_nullable]
-        nullable_cols = [a.name for a in schema if a.is_nullable]
-
-        # Extract distinct guard sets from target tables
-        guard_sets: dict[frozenset[str], list[str]] = {}
-        for table in self.ctx.target.tables:
-            guard = frozenset(self._extract_table_guard_attrs(table))
-            guard_sets.setdefault(guard, []).append(table.name)
-
-        # Always include empty guard (Level 0)
-        if frozenset() not in guard_sets:
-            guard_sets[frozenset()] = []
-
-        # Sort by cardinality ascending
-        sorted_guards = sorted(guard_sets.items(), key=lambda x: len(x[0]))
-
-        # Build levels with cumulative not_null / null columns
-        levels = []
-        for guard_frozen, tables in sorted_guards:
-            cumulative = set()
-            for g, _ in sorted_guards:
-                if g <= guard_frozen:
-                    cumulative |= set(g)
-
-            not_null = [c for c in nullable_cols if c in cumulative]
-            null = [c for c in nullable_cols if c not in cumulative]
-
-            levels.append(
-                GuardLevel(
-                    guard_attrs=set(guard_frozen),
-                    tables=tables,
-                    not_null_cols=not_null,
-                    null_cols=null,
-                )
-            )
-
-        src_pk: list[str] = []
-        for t in self.ctx.source.tables:
-            for col in self.ctx.source.primary_keys.get(t.name, []):
-                if col not in src_pk:
-                    src_pk.append(col)
-
-        self._hierarchy = GuardHierarchy(
-            mandatory_cols=mandatory_cols,
-            nullable_cols=nullable_cols,
-            levels=levels,
-            source_pk=src_pk,
+        self._hierarchy = build_guard_hierarchy(
+            target_tables=self.ctx.target.tables,
+            universal_schema=self._universal_schema,
+            source_primary_keys=self.ctx.source.primary_keys,
         )
         return self._hierarchy
 
-    @staticmethod
-    def _build_cfd_where_branches(
-        lhs_attrs: list[str],
-        rhs_attrs: list[str],
-        guard_attrs: list[str],
-        hierarchy: GuardHierarchy,
-    ) -> list[str]:
-        """Build exhaustive WHERE OR-branches for a CFD check.
-
-        Uses the guard hierarchy to determine which null-patterns are valid
-        at each specialization level, generating branches only for states
-        that genuinely violate the hierarchy.
-        """
-        branches: list[str] = []
-
-        # Branch 1: Main FD violation — all guards non-NULL, LHS match, RHS differ
-        guard_not_null = " AND ".join(f"R2.{a} IS NOT NULL" for a in guard_attrs)
-        lhs_match = " AND ".join(f"R1.{a} = R2.{a}" for a in lhs_attrs)
-        rhs_differ = " AND ".join(f"R1.{a} <> R2.{a}" for a in rhs_attrs)
-        branches.append(f"({guard_not_null} AND {lhs_match} AND {rhs_differ})")
-
-        # Find level-groups: new attrs added at each hierarchy level
-        level_groups: list[list[str]] = []
-        for i, level in enumerate(hierarchy.levels):
-            prev = set(hierarchy.levels[i - 1].not_null_cols) if i > 0 else set()
-            new = [c for c in level.not_null_cols if c not in prev]
-            if new:
-                level_groups.append(new)
-
-        def find_group(attr: str) -> tuple[int, list[str]]:
-            for i, group in enumerate(level_groups):
-                if attr in group:
-                    return i, group
-            return -1, [attr]
-
-        rhs_idx, rhs_group = find_group(rhs_attrs[0])
-        lhs_idx, _ = find_group(lhs_attrs[0])
-        cross_level = lhs_idx != rhs_idx
-
-        # Cross-level: LHS NULL → no RHS-group attr can be NOT NULL
-        if cross_level:
-            for lhs_attr in lhs_attrs:
-                for rhs_attr in rhs_group:
-                    branch = f"(R2.{lhs_attr} IS NULL AND R2.{rhs_attr} IS NOT NULL)"
-                    if branch not in branches:
-                        branches.append(branch)
-
-        # Coherence within RHS level-group: attrs must be jointly defined
-        for i, attr1 in enumerate(rhs_group):
-            for attr2 in rhs_group[i + 1 :]:
-                if cross_level:
-                    prefix = f"R2.{lhs_attrs[0]} IS NOT NULL AND "
-                else:
-                    prefix = ""
-                for branch in [
-                    f"({prefix}R2.{attr1} IS NOT NULL AND R2.{attr2} IS NULL)",
-                    f"({prefix}R2.{attr1} IS NULL AND R2.{attr2} IS NOT NULL)",
-                ]:
-                    if branch not in branches:
-                        branches.append(branch)
-
-        return branches
-
-    @staticmethod
-    def _build_containment_pruning(hierarchy: GuardHierarchy) -> list[dict]:
-        """Build pruning rules to remove less-informative tuples after JOIN."""
-        if len(hierarchy.levels) <= 1 or not hierarchy.nullable_cols:
-            return []
-
-        rules = []
-        for i in range(len(hierarchy.levels) - 1):
-            poorer = hierarchy.levels[i]
-            richer = hierarchy.levels[i + 1]
-
-            # Columns that distinguish richer from poorer
-            new_not_null = [
-                c for c in richer.not_null_cols if c not in poorer.not_null_cols
-            ]
-            if not new_not_null:
-                continue
-
-            richer_check = " AND ".join(
-                f"{c} IS NOT NULL" for c in richer.not_null_cols
-            )
-            richer_condition = " AND ".join(
-                f"t_rich.{c} IS NOT NULL" for c in richer.not_null_cols
-            )
-            poorer_condition = " AND ".join(f"t_poor.{c} IS NULL" for c in new_not_null)
-            identity_match = " AND ".join(
-                f"t_rich.{c} = t_poor.{c}"
-                for c in (hierarchy.mandatory_cols or hierarchy.source_pk)
-            )
-
-            rules.append(
-                {
-                    "richer_check": richer_check,
-                    "richer_condition": richer_condition,
-                    "poorer_condition": poorer_condition,
-                    "identity_match": identity_match,
-                }
-            )
-
-        return rules
-
-    @staticmethod
-    def _build_null_pattern_where(hierarchy: GuardHierarchy) -> str:
-        """Build WHERE clause with valid null-pattern disjunction."""
-        parts = []
-
-        # Identity columns always NOT NULL (mandatory, or source PK as fallback)
-        id_cols = hierarchy.mandatory_cols or hierarchy.source_pk
-        if id_cols:
-            parts.append(" AND ".join(f"{c} IS NOT NULL" for c in id_cols))
-
-        if not hierarchy.nullable_cols:
-            return " AND ".join(parts) if parts else "TRUE"
-
-        # Exclude identity columns from the disjunction
-        pattern_nullable = [c for c in hierarchy.nullable_cols if c not in id_cols]
-
-        if not pattern_nullable:
-            return " AND ".join(parts) if parts else "TRUE"
-
-        # Valid null-pattern branches (one per hierarchy level)
-        branches = []
-        for level in hierarchy.levels:
-            branch_parts = []
-            for col in pattern_nullable:
-                if col in level.not_null_cols:
-                    branch_parts.append(f"{col} IS NOT NULL")
-                else:
-                    branch_parts.append(f"{col} IS NULL")
-            branches.append("(" + " AND ".join(branch_parts) + ")")
-
-        pattern_clause = "(" + " OR ".join(branches) + ")"
-        parts.append(pattern_clause)
-
-        return " AND ".join(parts)
+    def _extract_table_guard_attrs(self, table: Table) -> list[str]:
+        """Extract guard attributes from a target table's select clause."""
+        return extract_table_guard_attrs(table)
 
     def _inc_sql(self, context: Context) -> str:
-        """Generate trigger-based INC enforcement for intra-table inclusion dependencies."""
-        parts = []
-        idx = 0
-        for inc in context.inclusion_subsumptions:
-            names = list(inc.relation_names)
-            if names[0] != names[1]:
-                continue  # Only handle intra-table INC here; inter-table uses FKs
-            idx += 1
-            attrs = list(inc.attributes)
-            mid = len(attrs) // 2
-            if mid != 1:
-                raise UnsupportedError(
-                    f"Multi-column intra-table INC not supported: {attrs}"
-                )
-            referencing_col = attrs[0]
-            referenced_col = attrs[mid]
-            pk = context.primary_keys.get(names[0], [])
-            parts.append(
-                self._render(
-                    "inc_check.sql.j2",
-                    table_name=names[0],
-                    referencing_col=referencing_col,
-                    referenced_col=referenced_col,
-                    referenced_table=names[0],
-                    self_ref_col=pk[0] if pk else referenced_col,
-                    inc_index=idx,
-                )
-            )
-        return "\n\n".join(parts) if parts else ""
+        """Backward-compat wrapper for tests."""
+        return _inc_sql_impl(context, self._render)
 
-    def _fd_sql(self, context: Context) -> str:
-        """Generate FD and CFD enforcement trigger functions.
-
-        Unguarded FDs produce a simple check (LHS match implies RHS match).
-        Guarded FDs (CFDs) use the guard hierarchy to build exhaustive
-        OR-branches covering all null-pattern states that would violate
-        the dependency.
-        """
-        fds = context.functional_dependencies
-        if not fds:
-            return ""
-
-        hierarchy = self._build_guard_hierarchy()
-        parts = []
-        for i, fd in enumerate(fds, 1):
-            lhs_attrs = list(fd.attributes)[:-1]
-            rhs_attrs = list(fd.attributes)[-1:]
-
-            table = self._find_table(fd.relation_name, context)
-            all_attrs = table.attributes
-            new_cols = ", ".join(f"NEW.{a}" for a in all_attrs)
-
-            # Extract guard attributes if FD is guarded (child is SelectNode)
-            guard_attrs = []
-            if isinstance(fd.child, SelectNode):
-                guard_attrs = self._extract_defined_attrs(fd.child.conditions)
-
-            if guard_attrs:
-                # Guarded FD -> CFD template with exhaustive OR branches
-                where_branches = self._build_cfd_where_branches(
-                    lhs_attrs, rhs_attrs, guard_attrs, hierarchy
-                )
-                parts.append(
-                    self._render(
-                        "cfd_check.sql.j2",
-                        table_name=fd.relation_name,
-                        fd_index=i,
-                        new_cols=new_cols,
-                        lhs_attrs=lhs_attrs,
-                        rhs_attrs=rhs_attrs,
-                        where_branches=where_branches,
-                    )
-                )
-            else:
-                # Unguarded FD -> existing simple template
-                lhs_condition = " AND ".join(f"r1.{a} = r2.{a}" for a in lhs_attrs)
-                rhs_condition = " AND ".join(f"r1.{a} <> r2.{a}" for a in rhs_attrs)
-                parts.append(
-                    self._render(
-                        "fd_check.sql.j2",
-                        table_name=fd.relation_name,
-                        fd_index=i,
-                        new_cols=new_cols,
-                        lhs_attrs=lhs_attrs,
-                        rhs_attrs=rhs_attrs,
-                        lhs_condition=lhs_condition,
-                        rhs_condition=rhs_condition,
-                        guard_attrs=[],
-                    )
-                )
-
-        return "\n\n".join(parts)
+    def _foreign_keys(self) -> str:
+        return foreign_keys(self.ctx.source, self.ctx.target, self.schema)
 
     def _constraints(self) -> str:
         """Generate all constraint enforcement (MVDs, FDs/CFDs, INCs) for both contexts."""
-        parts = []
-        for context in [self.ctx.source, self.ctx.target]:
-            mvd = self._mvd_sql(context)
-            if mvd:
-                parts.append(mvd)
-            fd = self._fd_sql(context)
-            if fd:
-                parts.append(fd)
-            inc = self._inc_sql(context)
-            if inc:
-                parts.append(inc)
-        return "\n\n".join(parts) if parts else ""
+        return constraints(
+            self.ctx.source,
+            self.ctx.target,
+            self._build_guard_hierarchy(),
+            self._render,
+        )
 
     def _tracking(self) -> str:
         """Generate insert/delete tracking infrastructure for both contexts.
@@ -775,7 +324,7 @@ class Generator:
                 "attrs": t.attributes,
                 "pk": target.primary_keys.get(t.name, []),
                 "guard_check": " AND ".join(
-                    f"{a} IS NOT NULL" for a in self._extract_table_guard_attrs(t)
+                    f"{a} IS NOT NULL" for a in extract_table_guard_attrs(t)
                 ),
             }
             for t in target.tables
@@ -799,7 +348,7 @@ class Generator:
             info["where_not_null"] = " AND ".join(
                 f"{a} IS NOT NULL" for a in where_cols
             )
-        tgt_insert_where = self._build_null_pattern_where(hierarchy)
+        tgt_insert_where = build_null_pattern_where(hierarchy)
 
         # --- SOURCE_INSERT_FN ---
         parts.append(
@@ -822,7 +371,7 @@ class Generator:
         )
 
         # --- TARGET_INSERT_FN ---
-        prune_rules = self._build_containment_pruning(hierarchy)
+        prune_rules = build_containment_pruning(hierarchy)
         parts.append(
             self._render(
                 "insert_mapping.sql.j2",
@@ -888,7 +437,7 @@ class Generator:
         return "\n\n".join(parts)
 
     def _build_source_delete_checks(self, source: Context, target: Context) -> dict:
-        """Build independence checks for source→target DELETE mapping."""
+        """Build independence checks for source->target DELETE mapping."""
         mvds = source.multivalued_dependencies
         src_table = source.tables[0]
         src_table_names = [t.name for t in source.tables]
@@ -956,7 +505,7 @@ class Generator:
         }
 
     def _build_target_delete_checks(self, source: Context) -> list[dict]:
-        """Build independence checks for target→source DELETE mapping.
+        """Build independence checks for target->source DELETE mapping.
 
         Joins SOURCE base tables (not target) to check whether removing
         a universal tuple leaves other source tuples that still require
