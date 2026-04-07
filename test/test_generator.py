@@ -454,3 +454,27 @@ def test_null_pattern_where_example2(example_2_dir: str):
     # Null-pattern disjunction (not all-NOT-NULL)
     assert "empid IS NULL AND hdate IS NULL" in target_fn
     assert "empid IS NOT NULL AND hdate IS NOT NULL" in target_fn
+
+
+def test_tuple_containment_pruning_example2(example_2_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._mapping()
+
+    # Extract TARGET_INSERT_FN section
+    target_fn_start = result.index("TARGET_INSERT_FN")
+    target_fn_end = result.index("SOURCE_DELETE_FN")
+    target_fn = result[target_fn_start:target_fn_end]
+
+    # Tuple containment pruning should appear AFTER temp_table_join INSERT
+    assert "DELETE FROM temp_table_join" in target_fn
+
+    # Should check for richer tuples at Level 1 (empid, hdate non-null)
+    assert "empid IS NOT NULL AND hdate IS NOT NULL" in target_fn
+
+    # Should delete poorer tuples where nullable cols are NULL
+    assert "empid IS NULL" in target_fn

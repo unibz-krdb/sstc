@@ -333,6 +333,44 @@ class Generator:
 
         return branches
 
+    def _build_containment_pruning(
+        self, hierarchy: GuardHierarchy
+    ) -> list[dict]:
+        """Build pruning rules to remove less-informative tuples after JOIN."""
+        if len(hierarchy.levels) <= 1 or not hierarchy.nullable_cols:
+            return []
+
+        rules = []
+        for i in range(len(hierarchy.levels) - 1):
+            poorer = hierarchy.levels[i]
+            richer = hierarchy.levels[i + 1]
+
+            # Columns that distinguish richer from poorer
+            new_not_null = [
+                c for c in richer.not_null_cols if c not in poorer.not_null_cols
+            ]
+            if not new_not_null:
+                continue
+
+            richer_condition = " AND ".join(
+                f"{c} IS NOT NULL" for c in richer.not_null_cols
+            )
+            poorer_condition = " AND ".join(
+                f"{c} IS NULL" for c in new_not_null
+            )
+            identity_match = " AND ".join(
+                f"t_rich.{c} = t_poor.{c}"
+                for c in (hierarchy.mandatory_cols or hierarchy.source_pk)
+            )
+
+            rules.append({
+                "richer_condition": richer_condition,
+                "poorer_condition": poorer_condition,
+                "identity_match": identity_match,
+            })
+
+        return rules
+
     def _build_null_pattern_where(self, hierarchy: GuardHierarchy) -> str:
         """Build WHERE clause with valid null-pattern disjunction."""
         parts = []
@@ -641,6 +679,7 @@ class Generator:
             )
 
         # --- TARGET_INSERT_FN ---
+        prune_rules = self._build_containment_pruning(hierarchy)
         parts.append(
             self._render(
                 "insert_mapping.sql.j2",
@@ -654,6 +693,7 @@ class Generator:
                 universal_columns=universal_columns,
                 universal_col_names=universal_col_names,
                 loop_value=-1,
+                prune_rules=prune_rules,
             )
         )
         for name in tgt_table_names:

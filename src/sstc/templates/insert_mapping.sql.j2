@@ -24,6 +24,21 @@ BEGIN
         WHERE {{ where_not_null }}
     );
 
+{% if prune_rules is defined and prune_rules %}
+    -- Tuple containment: keep only most informative tuples
+{% for rule in prune_rules %}
+    IF EXISTS (SELECT * FROM temp_table_join WHERE {{ rule.richer_condition }}) THEN
+        DELETE FROM temp_table_join t_poor
+        WHERE {{ rule.poorer_condition }}
+        AND EXISTS (
+            SELECT 1 FROM temp_table_join t_rich
+            WHERE {{ rule.identity_match }}
+            AND {{ rule.richer_condition }}
+        );
+    END IF;
+{% endfor %}
+{% endif %}
+
 {% for tbl in target_tables %}
     INSERT INTO {{ schema }}._{{ tbl.name }} (SELECT {{ tbl.attrs | join(', ') }} FROM temp_table_join)
         ON CONFLICT{% if tbl.pk %} ({{ tbl.pk | join(', ') }}){% endif %} DO NOTHING;
