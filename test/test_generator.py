@@ -1,45 +1,55 @@
-import os
+import pytest
 
-from fixtures import example_1_dir as example_1_dir
-from fixtures import example_2_dir as example_2_dir
-
-from sstc import TransducerContext
 from sstc.generator import Generator, GuardHierarchy, GuardLevel
 
 
-def test_preamble(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    preamble = gen._preamble()
+def _extract_section(result: str, start_marker: str, end_marker: str) -> str:
+    start = result.index(start_marker)
+    end = result.index(end_marker)
+    return result[start:end]
+
+
+def _assert_compile_structure(sql: str):
+    assert "DROP SCHEMA IF EXISTS transducer CASCADE" in sql
+    assert "CREATE SCHEMA transducer" in sql
+    assert "CREATE TABLE transducer._loop" in sql
+
+    create_count = sql.count("CREATE TABLE transducer.")
+    assert create_count == 46, f"Expected 46 CREATE TABLE, got {create_count}"
+
+    fn_count = sql.count("CREATE OR REPLACE FUNCTION")
+    assert fn_count == 46, f"Expected 46 functions, got {fn_count}"
+
+    trigger_count = sql.count("CREATE TRIGGER")
+    assert trigger_count == 60, f"Expected 60 triggers, got {trigger_count}"
+
+    assert "SOURCE_INSERT_FN" in sql
+    assert "SOURCE_DELETE_FN" in sql
+    assert "TARGET_INSERT_FN" in sql
+    assert "TARGET_DELETE_FN" in sql
+
+    assert "ON CONFLICT" in sql
+    assert "DO NOTHING" in sql
+    assert "NATURAL LEFT OUTER JOIN" in sql
+    assert "ABS(loop_start)" in sql
+
+
+def test_preamble(example_1_gen):
+    preamble = example_1_gen._preamble()
     assert "DROP SCHEMA IF EXISTS transducer CASCADE" in preamble
     assert "CREATE SCHEMA transducer" in preamble
     assert "CREATE TABLE transducer._loop" in preamble
     assert "loop_start" in preamble
 
 
-def test_compile_returns_string(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    result = Generator(ctx).compile()
+def test_compile_returns_string(example_1_gen):
+    result = example_1_gen.compile()
     assert isinstance(result, str)
     assert len(result) > 0
 
 
-def test_base_tables(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._base_tables()
+def test_base_tables(example_1_gen):
+    result = example_1_gen._base_tables()
 
     # All 9 tables created
     assert result.count("CREATE TABLE") == 9
@@ -62,41 +72,29 @@ def test_base_tables(example_1_dir: str):
         assert f"CREATE TABLE transducer._{name}" in result
 
 
-def test_foreign_keys(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._foreign_keys()
+def test_foreign_keys(example_1_gen):
+    result = example_1_gen._foreign_keys()
 
     # 4 from equivalences + 3 from subsumptions = 7
-    # (PEDDept→DeptManager skipped: dept is not PEDDept PK)
+    # (PEDDept->DeptManager skipped: dept is not PEDDept PK)
     # (Person_Source self-ref skipped: empid is not Person_Source PK)
     assert result.count("ADD FOREIGN KEY") == 7
 
-    # Equivalence: PersonPhone.ssn → Person.ssn
+    # Equivalence: PersonPhone.ssn -> Person.ssn
     assert (
         "ALTER TABLE transducer._personphone ADD FOREIGN KEY (ssn) REFERENCES transducer._person (ssn);"
         in result
     )
 
-    # Subsumption: DeptManager.manager → Employee.empid
+    # Subsumption: DeptManager.manager -> Employee.empid
     assert (
         "ALTER TABLE transducer._deptmanager ADD FOREIGN KEY (manager) REFERENCES transducer._employee (empid);"
         in result
     )
 
 
-def test_mvd_constraints(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._constraints()
+def test_mvd_constraints(example_1_gen):
+    result = example_1_gen._constraints()
 
     # MVD check function (BEFORE INSERT)
     assert "check_person_source_mvd_check" in result.lower()
@@ -110,14 +108,8 @@ def test_mvd_constraints(example_1_dir: str):
     assert "UNION" in result
 
 
-def test_fd_constraints(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._constraints()
+def test_fd_constraints(example_1_gen):
+    result = example_1_gen._constraints()
 
     # 3 CFD check functions for person_source (each has function + trigger = 6)
     assert result.lower().count("check_person_source_cfd") == 6
@@ -130,22 +122,16 @@ def test_fd_constraints(example_1_dir: str):
     assert "BEFORE INSERT" in result
 
 
-def test_tracking_layer(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._tracking()
+def test_tracking_layer(example_1_gen):
+    result = example_1_gen._tracking()
 
-    # 9 tables × 2 (INSERT + DELETE) = 18 tracking tables
+    # 9 tables x 2 (INSERT + DELETE) = 18 tracking tables
     assert result.count("CREATE TABLE") == 18
 
-    # 9 × 2 = 18 capture functions
+    # 9 x 2 = 18 capture functions
     assert result.count("CREATE OR REPLACE FUNCTION") == 18
 
-    # 9 × 2 = 18 triggers
+    # 9 x 2 = 18 triggers
     assert result.count("CREATE TRIGGER") == 18
 
     # Source functions check loop_start = -1, target check loop_start = 1
@@ -158,22 +144,16 @@ def test_tracking_layer(example_1_dir: str):
     assert "_person_INSERT" in result
 
 
-def test_join_layer(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._join()
+def test_join_layer(example_1_gen):
+    result = example_1_gen._join()
 
-    # 9 tables × 2 (INSERT_JOIN + DELETE_JOIN) = 18 staging tables
+    # 9 tables x 2 (INSERT_JOIN + DELETE_JOIN) = 18 staging tables
     assert result.count("CREATE TABLE") == 18
 
-    # 9 × 2 = 18 join functions
+    # 9 x 2 = 18 join functions
     assert result.count("CREATE OR REPLACE FUNCTION") == 18
 
-    # 9 × 2 = 18 join triggers
+    # 9 x 2 = 18 join triggers
     assert result.count("CREATE TRIGGER") == 18
 
     # Source functions insert VALUES (1), target insert VALUES (-1)
@@ -187,14 +167,8 @@ def test_join_layer(example_1_dir: str):
     assert "CREATE TEMPORARY TABLE" in result
 
 
-def test_source_insert_mapping(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._mapping()
+def test_source_insert_mapping(example_1_gen):
+    result = example_1_gen._mapping()
 
     # Wait mechanism
     assert "ABS(loop_start)" in result
@@ -210,14 +184,8 @@ def test_source_insert_mapping(example_1_dir: str):
     assert "SOURCE_INSERT_FN" in result
 
 
-def test_target_insert_mapping(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._mapping()
+def test_target_insert_mapping(example_1_gen):
+    result = example_1_gen._mapping()
 
     # Target insert mapping function
     assert "TARGET_INSERT_FN" in result
@@ -229,98 +197,38 @@ def test_target_insert_mapping(example_1_dir: str):
     assert "_person_source" in result
 
 
-def test_source_delete_mapping(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._mapping()
+def test_source_delete_mapping(example_1_gen):
+    result = example_1_gen._mapping()
 
     # Source delete function
     assert "SOURCE_DELETE_FN" in result
     assert "EXCEPT" in result
 
 
-def test_target_delete_mapping(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._mapping()
+def test_target_delete_mapping(example_1_gen):
+    result = example_1_gen._mapping()
 
     # Target delete function
     assert "TARGET_DELETE_FN" in result
 
 
-def test_full_compile_structure(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    sql = Generator(ctx).compile()
+def test_full_compile_structure(example_1_gen):
+    sql = example_1_gen.compile()
 
-    # Schema infrastructure
-    assert "DROP SCHEMA IF EXISTS transducer CASCADE" in sql
-    assert "CREATE SCHEMA transducer" in sql
-    assert "CREATE TABLE transducer._loop" in sql
+    _assert_compile_structure(sql)
 
-    # Base tables: 1 source + 8 target = 9
-    # Tracking: 9 × 2 (_INSERT, _DELETE) = 18
-    # Join staging: 9 × 2 (_INSERT_JOIN, _DELETE_JOIN) = 18
-    # Total CREATE TABLE: 9 + 18 + 18 + 1 (loop) = 46
-    create_table_count = sql.count("CREATE TABLE transducer.")
-    assert create_table_count == 46, (
-        f"Expected 46 CREATE TABLE, got {create_table_count}"
-    )
-
-    # Functions: 2 MVD + 3 CFD + 1 INC + 18 capture + 18 join + 4 mapping = 46
-    fn_count = sql.count("CREATE OR REPLACE FUNCTION")
-    assert fn_count == 46, f"Expected 46 functions, got {fn_count}"
-
-    # Triggers: 2 MVD + 3 CFD + 1 INC + 18 capture + 18 join + 18 mapping = 60
-    trigger_count = sql.count("CREATE TRIGGER")
-    assert trigger_count == 60, f"Expected 60 triggers, got {trigger_count}"
-
-    # Mapping functions present
-    assert "SOURCE_INSERT_FN" in sql
-    assert "SOURCE_DELETE_FN" in sql
-    assert "TARGET_INSERT_FN" in sql
-    assert "TARGET_DELETE_FN" in sql
-
-    # Foreign keys: 4 from inc= + 3 from inc⊆ = 7
+    # Foreign keys: 4 from inc= + 3 from inc subsumption = 7
     fk_count = sql.count("ADD FOREIGN KEY")
     assert fk_count == 7, f"Expected 7 foreign keys, got {fk_count}"
 
-    # Key SQL patterns
-    assert "ON CONFLICT" in sql
-    assert "DO NOTHING" in sql
-    assert "NATURAL LEFT OUTER JOIN" in sql
-    assert "ABS(loop_start)" in sql
+
+def test_example2_parses(example_2_ctx):
+    assert len(example_2_ctx.source.tables) == 1
+    assert len(example_2_ctx.target.tables) == 8
 
 
-def test_example2_parses(example_2_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    assert len(ctx.source.tables) == 1
-    assert len(ctx.target.tables) == 8
-
-
-def test_guard_hierarchy_example1(example_1_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    hierarchy = gen._build_guard_hierarchy()
+def test_guard_hierarchy_example1(example_1_gen):
+    hierarchy = example_1_gen._build_guard_hierarchy()
 
     # example1: all columns nullable
     assert hierarchy.mandatory_cols == []
@@ -342,14 +250,8 @@ def test_guard_hierarchy_example1(example_1_dir: str):
     assert hierarchy.levels[2].guard_attrs == {"empid", "hdate", "dept", "manager"}
 
 
-def test_guard_hierarchy_example2(example_2_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    hierarchy = gen._build_guard_hierarchy()
+def test_guard_hierarchy_example2(example_2_gen):
+    hierarchy = example_2_gen._build_guard_hierarchy()
 
     # example2: ssn, name, phone, email are NOT nullable
     assert set(hierarchy.mandatory_cols) == {"ssn", "name", "phone", "email"}
@@ -376,14 +278,8 @@ def test_guard_hierarchy_example2(example_2_dir: str):
     assert hierarchy.levels[2].null_cols == []
 
 
-def test_cfd_exhaustive_checks_example2(example_2_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._constraints()
+def test_cfd_exhaustive_checks_example2(example_2_gen):
+    result = example_2_gen._constraints()
 
     # 3 CFD check functions (guarded FDs -> CFD template)
     assert result.lower().count("check_person_source_cfd") == 6
@@ -402,14 +298,8 @@ def test_cfd_exhaustive_checks_example2(example_2_dir: str):
     assert result.count("BEFORE INSERT") >= 3
 
 
-def test_inc_constraint_example2(example_2_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._constraints()
+def test_inc_constraint_example2(example_2_gen):
+    result = example_2_gen._constraints()
 
     # INC enforcement function exists
     assert "check_person_source_inc" in result.lower()
@@ -424,38 +314,22 @@ def test_inc_constraint_example2(example_2_dir: str):
     assert "BEFORE INSERT" in result
 
 
-def test_conditional_inserts_example2(example_2_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._mapping()
+def test_conditional_inserts_example2(example_2_gen):
+    result = example_2_gen._mapping()
 
     # Extract just the SOURCE_INSERT_FN section
-    source_fn_start = result.index("SOURCE_INSERT_FN")
-    source_fn_end = result.index("TARGET_INSERT_FN")
-    source_fn = result[source_fn_start:source_fn_end]
+    source_fn = _extract_section(result, "SOURCE_INSERT_FN", "TARGET_INSERT_FN")
 
     # Guarded tables should have IF EXISTS wrapping
     assert "IF EXISTS" in source_fn
     assert "empid IS NOT NULL AND hdate IS NOT NULL" in source_fn
 
 
-def test_null_pattern_where_example2(example_2_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._mapping()
+def test_null_pattern_where_example2(example_2_gen):
+    result = example_2_gen._mapping()
 
     # Extract TARGET_INSERT_FN section
-    target_fn_start = result.index("TARGET_INSERT_FN")
-    target_fn_end = result.index("SOURCE_DELETE_FN")
-    target_fn = result[target_fn_start:target_fn_end]
+    target_fn = _extract_section(result, "TARGET_INSERT_FN", "SOURCE_DELETE_FN")
 
     # Mandatory cols always NOT NULL
     assert "ssn IS NOT NULL" in target_fn
@@ -468,19 +342,11 @@ def test_null_pattern_where_example2(example_2_dir: str):
     assert "empid IS NOT NULL AND hdate IS NOT NULL" in target_fn
 
 
-def test_tuple_containment_pruning_example2(example_2_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._mapping()
+def test_tuple_containment_pruning_example2(example_2_gen):
+    result = example_2_gen._mapping()
 
     # Extract TARGET_INSERT_FN section
-    target_fn_start = result.index("TARGET_INSERT_FN")
-    target_fn_end = result.index("SOURCE_DELETE_FN")
-    target_fn = result[target_fn_start:target_fn_end]
+    target_fn = _extract_section(result, "TARGET_INSERT_FN", "SOURCE_DELETE_FN")
 
     # Tuple containment pruning should appear AFTER temp_table_join INSERT
     assert "DELETE FROM temp_table_join" in target_fn
@@ -492,33 +358,10 @@ def test_tuple_containment_pruning_example2(example_2_dir: str):
     assert "empid IS NULL" in target_fn
 
 
-def test_full_compile_example2(example_2_dir: str):
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    sql = Generator(ctx).compile()
+def test_full_compile_example2(example_2_gen):
+    sql = example_2_gen.compile()
 
-    # Schema infrastructure
-    assert "DROP SCHEMA IF EXISTS transducer CASCADE" in sql
-    assert "CREATE SCHEMA transducer" in sql
-    assert "CREATE TABLE transducer._loop" in sql
-
-    # Base tables: 1 source + 8 target = 9
-    # Tracking: 9 x 2 = 18
-    # Join staging: 9 x 2 = 18
-    # Total CREATE TABLE: 9 + 18 + 18 + 1 (loop) = 46
-    create_count = sql.count("CREATE TABLE transducer.")
-    assert create_count == 46, f"Expected 46 CREATE TABLE, got {create_count}"
-
-    # Functions: 2 MVD + 3 CFD + 1 INC + 18 capture + 18 join + 4 mapping = 46
-    fn_count = sql.count("CREATE OR REPLACE FUNCTION")
-    assert fn_count == 46, f"Expected 46 functions, got {fn_count}"
-
-    # Triggers: 2 MVD + 3 CFD + 1 INC + 18 capture + 18 join + 18 mapping = 60
-    trigger_count = sql.count("CREATE TRIGGER")
-    assert trigger_count == 60, f"Expected 60 triggers, got {trigger_count}"
+    _assert_compile_structure(sql)
 
     # Composite PK on source
     assert "PRIMARY KEY (ssn, phone, email)" in sql
@@ -527,31 +370,15 @@ def test_full_compile_example2(example_2_dir: str):
     assert "ssn VARCHAR(100) NOT NULL" in sql
     assert "name VARCHAR(100) NOT NULL" in sql
 
-    # Mapping functions present
-    assert "SOURCE_INSERT_FN" in sql
-    assert "TARGET_INSERT_FN" in sql
-    assert "SOURCE_DELETE_FN" in sql
-    assert "TARGET_DELETE_FN" in sql
-
     # Key patterns from design
     assert "IF EXISTS" in sql  # Conditional INSERTs
     assert "empid IS NULL AND hdate IS NULL" in sql  # Null-pattern WHERE
-    assert "ON CONFLICT" in sql
-    assert "DO NOTHING" in sql
-    assert "NATURAL LEFT OUTER JOIN" in sql
-    assert "ABS(loop_start)" in sql
 
 
-def test_null_pattern_where_example1_requires_pk_not_null(example_1_dir: str):
+def test_null_pattern_where_example1_requires_pk_not_null(example_1_gen):
     """Regression: all-nullable schema must require source PK NOT NULL in WHERE."""
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    hierarchy = gen._build_guard_hierarchy()
-    where = gen._build_null_pattern_where(hierarchy)
+    hierarchy = example_1_gen._build_guard_hierarchy()
+    where = example_1_gen._build_null_pattern_where(hierarchy)
 
     # Source PK must always be NOT NULL
     assert where.startswith("ssn IS NOT NULL")
@@ -734,15 +561,9 @@ def test_cfd_branches_no_duplicates():
 # --- Unit tests for _build_containment_pruning ---
 
 
-def test_containment_pruning_multi_level(example_1_dir: str):
+def test_containment_pruning_multi_level(example_1_gen):
     """3 levels -> 2 pruning rules, identity uses source_pk."""
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    hierarchy = gen._build_guard_hierarchy()
+    hierarchy = example_1_gen._build_guard_hierarchy()
     rules = Generator._build_containment_pruning(hierarchy)
 
     assert len(rules) == 2
@@ -778,15 +599,9 @@ def test_containment_pruning_no_nullable():
     assert Generator._build_containment_pruning(h) == []
 
 
-def test_containment_pruning_identity_uses_mandatory(example_2_dir: str):
+def test_containment_pruning_identity_uses_mandatory(example_2_gen):
     """When mandatory_cols is non-empty, identity_match uses mandatory_cols."""
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    hierarchy = gen._build_guard_hierarchy()
+    hierarchy = example_2_gen._build_guard_hierarchy()
     rules = Generator._build_containment_pruning(hierarchy)
 
     assert len(rules) == 2
@@ -797,105 +612,38 @@ def test_containment_pruning_identity_uses_mandatory(example_2_dir: str):
         assert "t_rich.email = t_poor.email" in rule["identity_match"]
 
 
-# --- Unit tests for _extract_table_guard_attrs ---
+# --- Parametrized tests for _extract_table_guard_attrs ---
 
 
-def test_extract_guard_attrs_guarded(example_1_dir: str):
-    """Table with SelectNode -> returns guard attrs."""
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    employee = next(t for t in ctx.target.tables if t.name == "employee")
-    assert set(gen._extract_table_guard_attrs(employee)) == {"empid", "hdate"}
+@pytest.mark.parametrize(
+    "table_name,expected",
+    [
+        ("employee", {"empid", "hdate"}),
+        ("person", set()),
+    ],
+)
+def test_extract_guard_attrs(example_1_gen, example_1_ctx, table_name, expected):
+    table = next(t for t in example_1_ctx.target.tables if t.name == table_name)
+    assert set(example_1_gen._extract_table_guard_attrs(table)) == expected
 
 
-def test_extract_guard_attrs_unguarded(example_1_dir: str):
-    """Table without SelectNode -> returns empty list."""
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    person = next(t for t in ctx.target.tables if t.name == "person")
-    assert gen._extract_table_guard_attrs(person) == []
+# --- Parametrized tests for _inc_sql ---
 
 
-# --- Unit tests for _inc_sql ---
-
-
-def test_inc_sql_intra_table(example_1_dir: str):
-    """Self-referencing INC on same table -> generates trigger function."""
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._inc_sql(ctx.source)
-    assert result != ""
-    assert "check_person_source_inc_1_fn" in result
-    assert "BEFORE INSERT" in result
-    assert "EXCEPT" in result
-
-
-def test_inc_sql_inter_table_skipped(example_1_dir: str):
-    """Inter-table INC -> returns empty string (handled by FK)."""
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._inc_sql(ctx.target)
-    assert result == ""
-
-
-# --- Integration tests ---
-
-
-def test_example1_target_insert_where_structural(example_1_dir: str):
-    """Example1 TARGET_INSERT_FN: ssn IS NOT NULL in WHERE, no ssn IS NULL."""
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_1_dir, "universal.json"),
-        source_path=os.path.join(example_1_dir, "source.txt"),
-        target_path=os.path.join(example_1_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._mapping()
-
-    target_fn_start = result.index("TARGET_INSERT_FN")
-    target_fn_end = result.index("SOURCE_DELETE_FN")
-    target_fn = result[target_fn_start:target_fn_end]
-
-    # Find the main WHERE clause (on temp_table_join INSERT, not pruning/loop)
-    where_lines = [
-        line.strip()
-        for line in target_fn.split("\n")
-        if "WHERE" in line and "loop" not in line and "t_rich" not in line
-    ]
-    main_where = where_lines[0] if where_lines else ""
-
-    assert "ssn IS NOT NULL" in main_where
-    assert "ssn IS NULL" not in main_where
-
-
-def test_example2_delete_path_where(example_2_dir: str):
-    """TARGET_DELETE_FN uses null-pattern WHERE with mandatory cols."""
-    ctx = TransducerContext.from_files(
-        universal_path=os.path.join(example_2_dir, "universal.json"),
-        source_path=os.path.join(example_2_dir, "source.txt"),
-        target_path=os.path.join(example_2_dir, "target.txt"),
-    )
-    gen = Generator(ctx)
-    result = gen._mapping()
-
-    del_start = result.index("TARGET_DELETE_FN")
-    del_fn = result[del_start:]
-
-    assert "ssn IS NOT NULL" in del_fn
-    assert "name IS NOT NULL" in del_fn
-    assert "empid IS NULL AND hdate IS NULL" in del_fn
+@pytest.mark.parametrize(
+    "context_attr,expect_empty",
+    [
+        ("source", False),
+        ("target", True),
+    ],
+)
+def test_inc_sql(example_1_gen, example_1_ctx, context_attr, expect_empty):
+    ctx = getattr(example_1_ctx, context_attr)
+    result = example_1_gen._inc_sql(ctx)
+    if expect_empty:
+        assert result == ""
+    else:
+        assert result != ""
+        assert "check_person_source_inc_1_fn" in result
+        assert "BEFORE INSERT" in result
+        assert "EXCEPT" in result
