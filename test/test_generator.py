@@ -278,13 +278,13 @@ def test_full_compile_structure(example_1_dir: str):
         f"Expected 46 CREATE TABLE, got {create_table_count}"
     )
 
-    # Functions: 2 MVD + 3 FD + 18 capture + 18 join + 4 mapping = 45
+    # Functions: 2 MVD + 3 CFD + 1 INC + 18 capture + 18 join + 4 mapping = 46
     fn_count = sql.count("CREATE OR REPLACE FUNCTION")
-    assert fn_count == 45, f"Expected 45 functions, got {fn_count}"
+    assert fn_count == 46, f"Expected 46 functions, got {fn_count}"
 
-    # Triggers: 2 MVD + 3 FD + 18 capture + 18 join + 18 mapping = 59
+    # Triggers: 2 MVD + 3 CFD + 1 INC + 18 capture + 18 join + 18 mapping = 60
     trigger_count = sql.count("CREATE TRIGGER")
-    assert trigger_count == 59, f"Expected 59 triggers, got {trigger_count}"
+    assert trigger_count == 60, f"Expected 60 triggers, got {trigger_count}"
 
     # Mapping functions present
     assert "SOURCE_INSERT_FN" in sql
@@ -388,3 +388,25 @@ def test_cfd_exhaustive_checks_example2(example_2_dir: str):
 
     # All use BEFORE INSERT triggers
     assert result.count("BEFORE INSERT") >= 3
+
+
+def test_inc_constraint_example2(example_2_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._constraints()
+
+    # INC enforcement function exists
+    assert "check_person_source_inc" in result.lower()
+
+    # Allows NULL manager
+    assert "IS NULL" in result
+
+    # Uses EXCEPT pattern for existence check
+    assert "EXCEPT" in result
+
+    # BEFORE INSERT trigger
+    assert "BEFORE INSERT" in result

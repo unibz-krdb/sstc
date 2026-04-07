@@ -1,0 +1,29 @@
+CREATE OR REPLACE FUNCTION {{ schema }}.check_{{ table_name }}_inc_{{ inc_index }}_fn()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+    IF (NEW.{{ referencing_col }} IS NULL) THEN
+        RETURN NEW;
+    END IF;
+    IF (NEW.{{ referencing_col }} = NEW.{{ self_ref_col }}) THEN
+        RETURN NEW;
+    END IF;
+    IF EXISTS (SELECT DISTINCT NEW.{{ referencing_col }}
+        FROM {{ schema }}._{{ table_name }}
+        EXCEPT (
+            SELECT {{ referenced_col }} AS {{ referencing_col }}
+            FROM {{ schema }}._{{ referenced_table }}
+            UNION
+            SELECT NEW.{{ self_ref_col }} AS {{ referencing_col }}
+        )) THEN
+        RAISE EXCEPTION 'INC violation: {{ table_name }}.{{ referencing_col }} ⊆ {{ referenced_table }}.{{ referenced_col }}';
+        RETURN NULL;
+    ELSE
+        RETURN NEW;
+    END IF;
+END;
+$$;
+
+CREATE TRIGGER {{ table_name }}_inc_{{ inc_index }}_trigger
+BEFORE INSERT ON {{ schema }}._{{ table_name }}
+FOR EACH ROW
+EXECUTE FUNCTION {{ schema }}.check_{{ table_name }}_inc_{{ inc_index }}_fn();

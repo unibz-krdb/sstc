@@ -333,6 +333,33 @@ class Generator:
 
         return branches
 
+    def _inc_sql(self, context: Context) -> str:
+        """Generate trigger-based INC enforcement for intra-table inclusion dependencies."""
+        parts = []
+        idx = 0
+        for inc in context.inclusion_subsumptions:
+            names = list(inc.relation_names)
+            if names[0] != names[1]:
+                continue  # Only handle intra-table INC here; inter-table uses FKs
+            idx += 1
+            attrs = list(inc.attributes)
+            mid = len(attrs) // 2
+            referencing_col = attrs[0]
+            referenced_col = attrs[mid]
+            pk = context.primary_keys.get(names[0], [])
+            parts.append(
+                self._render(
+                    "inc_check.sql.j2",
+                    table_name=names[0],
+                    referencing_col=referencing_col,
+                    referenced_col=referenced_col,
+                    referenced_table=names[0],
+                    self_ref_col=pk[0] if pk else referenced_col,
+                    inc_index=idx,
+                )
+            )
+        return "\n\n".join(parts) if parts else ""
+
     def _fd_sql(self, context: Context) -> str:
         fds = context.functional_dependencies
         if not fds:
@@ -397,6 +424,9 @@ class Generator:
             fd = self._fd_sql(context)
             if fd:
                 parts.append(fd)
+            inc = self._inc_sql(context)
+            if inc:
+                parts.append(inc)
         return "\n\n".join(parts) if parts else ""
 
     def _tracking(self) -> str:
