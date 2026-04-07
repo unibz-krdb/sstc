@@ -1,3 +1,11 @@
+"""SQL generator for the SSTC compilation pipeline.
+
+Transforms a TransducerContext (parsed source/target relational algebra)
+into executable PostgreSQL DDL: schema creation, base tables, foreign keys,
+constraint enforcement (MVDs, CFDs, INCs), insert/delete tracking,
+join staging, and bidirectional mapping functions with triggers.
+"""
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -16,6 +24,8 @@ from .transducer_context import TransducerContext
 
 
 class UnsupportedError(Exception):
+    """Raised when the generator encounters a constraint pattern it cannot compile."""
+
     pass
 
 
@@ -27,6 +37,14 @@ TARGET_LOOP_VALUE = -1
 
 @dataclass
 class GuardLevel:
+    """A single level in the guard specialization hierarchy.
+
+    Each level corresponds to a set of guard attributes (nullable columns
+    that must be non-NULL for certain target tables to be populated).
+    Tracks which tables belong to this level and the cumulative null/not-null
+    partition of nullable columns up to this point.
+    """
+
     guard_attrs: set[str]
     tables: list[str] = field(default_factory=list)
     not_null_cols: list[str] = field(default_factory=list)
@@ -35,6 +53,14 @@ class GuardLevel:
 
 @dataclass
 class GuardHierarchy:
+    """The full specialization hierarchy derived from universal schema nullability and target guards.
+
+    Organizes target tables into levels ordered by increasing guard
+    specificity (more NOT NULL requirements). Used to generate CFD
+    enforcement branches, containment pruning rules, and valid
+    null-pattern WHERE clauses in mapping functions.
+    """
+
     mandatory_cols: list[str]
     nullable_cols: list[str]
     levels: list[GuardLevel]
@@ -42,6 +68,15 @@ class GuardHierarchy:
 
 
 class Generator:
+    """Compiles a TransducerContext into a complete PostgreSQL SQL script.
+
+    The compilation pipeline produces layered output: a schema preamble,
+    base tables with foreign keys, constraint enforcement functions
+    (MVDs, FDs/CFDs, INCs), insert/delete tracking infrastructure,
+    natural-join staging, and four bidirectional mapping functions
+    (source/target x insert/delete) with their triggers.
+    """
+
     def __init__(self, ctx: TransducerContext, schema: str = "transducer"):
         self.ctx = ctx
         self.schema = schema
@@ -66,6 +101,12 @@ class Generator:
         return [a.name for a in self._universal_schema]
 
     def compile(self) -> str:
+        """Generate the full SQL script from all pipeline layers.
+
+        Returns a single string containing schema preamble, base tables,
+        foreign keys, constraints, tracking, join staging, and mapping
+        sections, separated by blank lines.
+        """
         sections = [
             self._preamble(),
             self._base_tables(),
@@ -118,6 +159,13 @@ class Generator:
     def _emit_fk(
         self, inc, pks: dict[str, list[str]], *, equivalence: bool
     ) -> str | None:
+        """Emit an ALTER TABLE ADD FOREIGN KEY statement from an inclusion dependency.
+
+        For equivalence INCs (inc=), the direction is swapped so the second
+        relation references the first. For subsumption INCs (inc-subset),
+        the first relation references the second. Returns None if the
+        referenced columns do not form the referenced table's primary key.
+        """
         names = list(inc.relation_names)
         attrs = list(inc.attributes)
         mid = len(attrs) // 2
@@ -152,6 +200,14 @@ class Generator:
         return "\n".join(parts) if parts else ""
 
     def _mvd_sql(self, context: Context) -> str:
+        """Generate MVD enforcement for a context: a check function and a grounding function per table.
+
+        The check function is a trigger that rejects inserts violating the
+        MVD (same LHS, different RHS without complementary tuple). The
+        grounding function inserts the missing complementary tuples to
+        restore the 4th-normal-form property. Raises UnsupportedError if
+        a table has MVDs with non-shared LHS determinants.
+        """
         mvds = context.multivalued_dependencies
         if not mvds:
             return ""
@@ -218,6 +274,7 @@ class Generator:
         return "\n\n".join(parts)
 
     def _find_table(self, name: str, context: Context) -> Table:
+        """Look up a table by name in a context. Raises ValueError if not found."""
         for table in context.tables:
             if table.name == name:
                 return table
@@ -225,6 +282,7 @@ class Generator:
 
     @staticmethod
     def _extract_defined_attrs(cond) -> list[str]:
+        """Recursively extract attribute names from DEFINED(...) conditions in a condition tree."""
         if isinstance(cond, UnaryConditionNode):
             if cond.op == UnaryConditionalOperator.DEFINED:
                 return cond.child.attribute_references()
@@ -474,6 +532,13 @@ class Generator:
         return "\n\n".join(parts) if parts else ""
 
     def _fd_sql(self, context: Context) -> str:
+        """Generate FD and CFD enforcement trigger functions.
+
+        Unguarded FDs produce a simple check (LHS match implies RHS match).
+        Guarded FDs (CFDs) use the guard hierarchy to build exhaustive
+        OR-branches covering all null-pattern states that would violate
+        the dependency.
+        """
         fds = context.functional_dependencies
         if not fds:
             return ""
@@ -530,6 +595,7 @@ class Generator:
         return "\n\n".join(parts)
 
     def _constraints(self) -> str:
+        """Generate all constraint enforcement (MVDs, FDs/CFDs, INCs) for both contexts."""
         parts = []
         for context in [self.ctx.source, self.ctx.target]:
             mvd = self._mvd_sql(context)
@@ -544,6 +610,12 @@ class Generator:
         return "\n\n".join(parts) if parts else ""
 
     def _tracking(self) -> str:
+        """Generate insert/delete tracking infrastructure for both contexts.
+
+        For each table in each context, produces a tracking table (shadow
+        clone), a capture function (guarded by loop detection), and a
+        trigger that fires AFTER INSERT or AFTER DELETE on the base table.
+        """
         parts = []
         for context in [self.ctx.source, self.ctx.target]:
             direction = context.direction
@@ -589,6 +661,13 @@ class Generator:
         return "\n\n".join(parts)
 
     def _join(self) -> str:
+        """Generate join staging layer for both contexts.
+
+        For each table, produces a JOIN staging table, a function that
+        natural-joins all tracked changes into universal tuples (writing
+        to the loop table for cycle detection), and a trigger that fires
+        when rows land in the tracking table.
+        """
         parts = []
         universal_columns = self._universal_columns()
         universal_col_names = self._universal_col_names()
@@ -643,6 +722,7 @@ class Generator:
 
     @staticmethod
     def _cleanup_names(table_names: list[str], suffix: str) -> list[str]:
+        """Return tracking and join staging table names to TRUNCATE after mapping."""
         result = []
         for name in table_names:
             result.extend([f"{name}_{suffix}", f"{name}_{suffix}_JOIN"])
@@ -651,6 +731,7 @@ class Generator:
     def _mapping_triggers(
         self, fn_name: str, table_names: list[str], suffix: str
     ) -> list[str]:
+        """Render triggers that wire each table's JOIN staging table to a mapping function."""
         return [
             self._render(
                 "mapping_trigger.sql.j2",
@@ -662,6 +743,15 @@ class Generator:
         ]
 
     def _mapping(self) -> str:
+        """Generate the four bidirectional mapping functions and their triggers.
+
+        Produces SOURCE_INSERT_FN, TARGET_INSERT_FN, SOURCE_DELETE_FN,
+        and TARGET_DELETE_FN. Each function reads from join staging tables,
+        applies the appropriate mapping (project universal tuples into the
+        opposite context's tables), and cleans up tracking state. Insert
+        mappings use containment pruning and null-pattern filtering;
+        delete mappings use MVD independence checks.
+        """
         parts = []
         source = self.ctx.source
         target = self.ctx.target

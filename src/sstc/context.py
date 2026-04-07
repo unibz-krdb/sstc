@@ -1,3 +1,12 @@
+"""Context parsing pipeline for relational algebra definitions.
+
+Reads a universal schema JSON file and a relational algebra text file,
+runs them through the RAPT2 parser (Dependency Grammar), and separates the
+resulting syntax tree into table definitions, dependency constraints, and
+the special UniversalMapping assignment. The parsed artifacts are assembled
+into Table instances and exposed via a Context object.
+"""
+
 import json
 from typing import Self
 
@@ -38,6 +47,7 @@ class Context:
             self.schema.add(table.name, table.attributes)
 
     def _nodes_of_type(self, cls: type) -> list:
+        """Filter dependency nodes to those matching the given type."""
         return [n for n in self.dependency_nodes if isinstance(n, cls)]
 
     @property
@@ -67,6 +77,14 @@ class Context:
     def from_file(
         cls, universal_path: str, context_path: str, direction: str = "source"
     ) -> Self:
+        """Parse a universal schema JSON and a relational algebra file into a Context.
+
+        Loads the universal schema, then feeds the RA text through RAPT2's
+        Dependency Grammar parser. The resulting nodes are separated into
+        relation assignments (Table definitions), dependency nodes (PK, FD,
+        MVD, INC constraints), and a reserved UniversalMapping assignment.
+        Tables are constructed by matching each relation to its dependencies.
+        """
         universal_attributes = []
         schema = {"Universal": []}
         with open(universal_path, "r") as file:
