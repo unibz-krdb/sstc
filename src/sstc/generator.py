@@ -19,6 +19,12 @@ class UnsupportedError(Exception):
     pass
 
 
+SOURCE_LOOP_CHECK = -1
+TARGET_LOOP_CHECK = 1
+SOURCE_LOOP_VALUE = 1
+TARGET_LOOP_VALUE = -1
+
+
 @dataclass
 class GuardLevel:
     guard_attrs: set[str]
@@ -52,7 +58,9 @@ class Generator:
         return self.ctx.source.tables[0].universal_schema
 
     def _universal_columns(self) -> list[dict]:
-        return [{"name": a.name, "data_type": a.data_type} for a in self._universal_schema]
+        return [
+            {"name": a.name, "data_type": a.data_type} for a in self._universal_schema
+        ]
 
     def _universal_col_names(self) -> list[str]:
         return [a.name for a in self._universal_schema]
@@ -77,18 +85,18 @@ class Generator:
         return self._render("preamble.sql.j2")
 
     def _table_columns(self, table: Table) -> list[dict]:
+        schema_by_name = {a.name.lower(): a for a in table.universal_schema}
         columns = []
         for attr_name in table.attributes:
-            for attr in table.universal_schema:
-                if attr.name.lower() == attr_name.lower():
-                    columns.append(
-                        {
-                            "name": attr.name,
-                            "data_type": attr.data_type,
-                            "is_nullable": attr.is_nullable,
-                        }
-                    )
-                    break
+            attr = schema_by_name.get(attr_name.lower())
+            if attr:
+                columns.append(
+                    {
+                        "name": attr.name,
+                        "data_type": attr.data_type,
+                        "is_nullable": attr.is_nullable,
+                    }
+                )
         return columns
 
     def _create_table(self, table: Table, context: Context) -> str:
@@ -107,43 +115,40 @@ class Generator:
                 parts.append(self._create_table(table, context))
         return "\n".join(parts)
 
+    def _emit_fk(
+        self, inc, pks: dict[str, list[str]], *, equivalence: bool
+    ) -> str | None:
+        names = list(inc.relation_names)
+        attrs = list(inc.attributes)
+        mid = len(attrs) // 2
+        if equivalence:
+            referenced_table, referencing_table = names[0], names[1]
+            referenced_cols, referencing_cols = attrs[:mid], attrs[mid:]
+        else:
+            referencing_table, referenced_table = names[0], names[1]
+            referencing_cols, referenced_cols = attrs[:mid], attrs[mid:]
+        ref_pk = pks.get(referenced_table, [])
+        if sorted(referenced_cols) != sorted(ref_pk):
+            return None
+        return (
+            f"ALTER TABLE {self.schema}._{referencing_table} "
+            f"ADD FOREIGN KEY ({', '.join(referencing_cols)}) "
+            f"REFERENCES {self.schema}._{referenced_table}"
+            f" ({', '.join(referenced_cols)});"
+        )
+
     def _foreign_keys(self) -> str:
         parts: list[str] = []
         for context in [self.ctx.source, self.ctx.target]:
             pks = context.primary_keys
-
-            # inc=_{a, b} (T1, T2): T2[b] references T1[a]
             for inc in context.inclusion_equivalences:
-                names = list(inc.relation_names)
-                attrs = list(inc.attributes)
-                mid = len(attrs) // 2
-                referenced_table, referencing_table = names[0], names[1]
-                referenced_cols, referencing_cols = attrs[:mid], attrs[mid:]
-                ref_pk = pks.get(referenced_table, [])
-                if sorted(referenced_cols) == sorted(ref_pk):
-                    parts.append(
-                        f"ALTER TABLE {self.schema}._{referencing_table} "
-                        f"ADD FOREIGN KEY ({', '.join(referencing_cols)}) "
-                        f"REFERENCES {self.schema}._{referenced_table}"
-                        f" ({', '.join(referenced_cols)});"
-                    )
-
-            # inc⊆_{a, b} (T1, T2): T1[a] references T2[b]
+                fk = self._emit_fk(inc, pks, equivalence=True)
+                if fk:
+                    parts.append(fk)
             for inc in context.inclusion_subsumptions:
-                names = list(inc.relation_names)
-                attrs = list(inc.attributes)
-                mid = len(attrs) // 2
-                referencing_table, referenced_table = names[0], names[1]
-                referencing_cols, referenced_cols = attrs[:mid], attrs[mid:]
-                ref_pk = pks.get(referenced_table, [])
-                if sorted(referenced_cols) == sorted(ref_pk):
-                    parts.append(
-                        f"ALTER TABLE {self.schema}._{referencing_table} "
-                        f"ADD FOREIGN KEY ({', '.join(referencing_cols)}) "
-                        f"REFERENCES {self.schema}._{referenced_table}"
-                        f" ({', '.join(referenced_cols)});"
-                    )
-
+                fk = self._emit_fk(inc, pks, equivalence=False)
+                if fk:
+                    parts.append(fk)
         return "\n".join(parts) if parts else ""
 
     def _mvd_sql(self, context: Context) -> str:
@@ -327,44 +332,37 @@ class Generator:
             if new:
                 level_groups.append(new)
 
-        def find_group(attr: str) -> list[str]:
-            for group in level_groups:
-                if attr in group:
-                    return group
-            return [attr]
-
-        def find_group_index(attr: str) -> int:
+        def find_group(attr: str) -> tuple[int, list[str]]:
             for i, group in enumerate(level_groups):
                 if attr in group:
-                    return i
-            return -1
+                    return i, group
+            return -1, [attr]
 
-        rhs_group = find_group(rhs_attrs[0])
-        lhs_idx = find_group_index(lhs_attrs[0])
-        rhs_idx = find_group_index(rhs_attrs[0])
+        rhs_idx, rhs_group = find_group(rhs_attrs[0])
+        lhs_idx, _ = find_group(lhs_attrs[0])
         cross_level = lhs_idx != rhs_idx
 
         # Cross-level: LHS NULL → no RHS-group attr can be NOT NULL
         if cross_level:
-            for x in lhs_attrs:
-                for r in rhs_group:
-                    b = f"(R2.{x} IS NULL AND R2.{r} IS NOT NULL)"
-                    if b not in branches:
-                        branches.append(b)
+            for lhs_attr in lhs_attrs:
+                for rhs_attr in rhs_group:
+                    branch = f"(R2.{lhs_attr} IS NULL AND R2.{rhs_attr} IS NOT NULL)"
+                    if branch not in branches:
+                        branches.append(branch)
 
         # Coherence within RHS level-group: attrs must be jointly defined
-        for i, a1 in enumerate(rhs_group):
-            for a2 in rhs_group[i + 1 :]:
+        for i, attr1 in enumerate(rhs_group):
+            for attr2 in rhs_group[i + 1 :]:
                 if cross_level:
                     prefix = f"R2.{lhs_attrs[0]} IS NOT NULL AND "
                 else:
                     prefix = ""
-                for b in [
-                    f"({prefix}R2.{a1} IS NOT NULL AND R2.{a2} IS NULL)",
-                    f"({prefix}R2.{a1} IS NULL AND R2.{a2} IS NOT NULL)",
+                for branch in [
+                    f"({prefix}R2.{attr1} IS NOT NULL AND R2.{attr2} IS NULL)",
+                    f"({prefix}R2.{attr1} IS NULL AND R2.{attr2} IS NOT NULL)",
                 ]:
-                    if b not in branches:
-                        branches.append(b)
+                    if branch not in branches:
+                        branches.append(branch)
 
         return branches
 
@@ -550,7 +548,9 @@ class Generator:
         for context in [self.ctx.source, self.ctx.target]:
             direction = context.direction
             # Source checks loop_start = -1, target checks loop_start = 1
-            loop_check = -1 if direction == "source" else 1
+            loop_check = (
+                SOURCE_LOOP_CHECK if direction == "source" else TARGET_LOOP_CHECK
+            )
             for table in context.tables:
                 for suffix, event, row_prefix, return_val in [
                     ("INSERT", "AFTER INSERT", "NEW", "NEW"),
@@ -596,7 +596,9 @@ class Generator:
         for context in [self.ctx.source, self.ctx.target]:
             direction = context.direction
             # Source inserts +1 to loop, target inserts -1
-            loop_value = 1 if direction == "source" else -1
+            loop_value = (
+                SOURCE_LOOP_VALUE if direction == "source" else TARGET_LOOP_VALUE
+            )
 
             all_tables_info = [
                 {"name": t.name, "attrs": t.attributes} for t in context.tables
@@ -639,6 +641,26 @@ class Generator:
                     )
         return "\n\n".join(parts)
 
+    @staticmethod
+    def _cleanup_names(table_names: list[str], suffix: str) -> list[str]:
+        result = []
+        for name in table_names:
+            result.extend([f"{name}_{suffix}", f"{name}_{suffix}_JOIN"])
+        return result
+
+    def _mapping_triggers(
+        self, fn_name: str, table_names: list[str], suffix: str
+    ) -> list[str]:
+        return [
+            self._render(
+                "mapping_trigger.sql.j2",
+                fn_name=fn_name,
+                table_name=name,
+                suffix=suffix,
+            )
+            for name in table_names
+        ]
+
     def _mapping(self) -> str:
         parts = []
         source = self.ctx.source
@@ -669,26 +691,16 @@ class Generator:
             for t in target.tables
         ]
 
+        hierarchy = self._build_guard_hierarchy()
+
         # Cleanup table names for each direction + suffix
-        src_cleanup = []
-        for name in src_table_names:
-            src_cleanup.extend([f"{name}_INSERT", f"{name}_INSERT_JOIN"])
-        tgt_cleanup = []
-        for name in tgt_table_names:
-            tgt_cleanup.extend([f"{name}_INSERT", f"{name}_INSERT_JOIN"])
-        src_del_cleanup = []
-        for name in src_table_names:
-            src_del_cleanup.extend([f"{name}_DELETE", f"{name}_DELETE_JOIN"])
-        tgt_del_cleanup = []
-        for name in tgt_table_names:
-            tgt_del_cleanup.extend([f"{name}_DELETE", f"{name}_DELETE_JOIN"])
+        src_cleanup = self._cleanup_names(src_table_names, "INSERT")
+        tgt_cleanup = self._cleanup_names(tgt_table_names, "INSERT")
+        src_del_cleanup = self._cleanup_names(src_table_names, "DELETE")
+        tgt_del_cleanup = self._cleanup_names(tgt_table_names, "DELETE")
 
         # Per-table WHERE: source PK columns + each target table's PK columns
-        src_pk_cols: list[str] = []
-        for t in source.tables:
-            for col in source.primary_keys.get(t.name, []):
-                if col not in src_pk_cols:
-                    src_pk_cols.append(col)
+        src_pk_cols = hierarchy.source_pk
         for info in tgt_tables_info:
             where_cols = list(src_pk_cols)
             for pk_col in info["pk"]:
@@ -697,7 +709,6 @@ class Generator:
             info["where_not_null"] = " AND ".join(
                 f"{a} IS NOT NULL" for a in where_cols
             )
-        hierarchy = self._build_guard_hierarchy()
         tgt_insert_where = self._build_null_pattern_where(hierarchy)
 
         # --- SOURCE_INSERT_FN ---
@@ -716,15 +727,9 @@ class Generator:
                 loop_value=None,
             )
         )
-        for name in src_table_names:
-            parts.append(
-                self._render(
-                    "mapping_trigger.sql.j2",
-                    fn_name="SOURCE_INSERT_FN",
-                    table_name=name,
-                    suffix="INSERT",
-                )
-            )
+        parts.extend(
+            self._mapping_triggers("SOURCE_INSERT_FN", src_table_names, "INSERT")
+        )
 
         # --- TARGET_INSERT_FN ---
         prune_rules = self._build_containment_pruning(hierarchy)
@@ -744,15 +749,9 @@ class Generator:
                 prune_rules=prune_rules,
             )
         )
-        for name in tgt_table_names:
-            parts.append(
-                self._render(
-                    "mapping_trigger.sql.j2",
-                    fn_name="TARGET_INSERT_FN",
-                    table_name=name,
-                    suffix="INSERT",
-                )
-            )
+        parts.extend(
+            self._mapping_triggers("TARGET_INSERT_FN", tgt_table_names, "INSERT")
+        )
 
         # --- SOURCE_DELETE_FN ---
         mvd_checks = self._build_source_delete_checks(source, target)
@@ -771,15 +770,9 @@ class Generator:
                 use_abs=False,
             )
         )
-        for name in src_table_names:
-            parts.append(
-                self._render(
-                    "mapping_trigger.sql.j2",
-                    fn_name="SOURCE_DELETE_FN",
-                    table_name=name,
-                    suffix="DELETE",
-                )
-            )
+        parts.extend(
+            self._mapping_triggers("SOURCE_DELETE_FN", src_table_names, "DELETE")
+        )
 
         # --- TARGET_DELETE_FN ---
         tgt_delete_checks = self._build_target_delete_checks(source)
@@ -798,15 +791,9 @@ class Generator:
                 use_abs=True,
             )
         )
-        for name in tgt_table_names:
-            parts.append(
-                self._render(
-                    "mapping_trigger.sql.j2",
-                    fn_name="TARGET_DELETE_FN",
-                    table_name=name,
-                    suffix="DELETE",
-                )
-            )
+        parts.extend(
+            self._mapping_triggers("TARGET_DELETE_FN", tgt_table_names, "DELETE")
+        )
 
         return "\n\n".join(parts)
 
