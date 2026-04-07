@@ -1,6 +1,5 @@
 from typing import Self
 
-from rapt2.rapt import sql_translator
 from rapt2.treebrd.node import (
     AssignNode,
     BinaryDependencyNode,
@@ -75,73 +74,3 @@ class Table:
             )
 
         return tables
-
-    def gen_concrete_create_stmt(self) -> str:
-        """Generate a typed CREATE TABLE statement with NOT NULL constraints."""
-        table_name = self.name
-        columns = []
-
-        for my_attr in self.attributes:
-            for attr in self.universal_schema:
-                if attr.name.lower() != my_attr.lower():
-                    continue
-                column_def = f"{attr.name} {attr.data_type}"
-                if not attr.is_nullable:
-                    column_def += " NOT NULL"
-                columns.append(column_def)
-
-        columns_str = ",\n    ".join(columns)
-        return f"CREATE TABLE {table_name} (\n    {columns_str}\n)"
-
-    def gen_universal_create_stmt(self) -> str:
-        """Generate a CREATE TABLE statement via RAPT2's SQL translator.
-
-        Uses bag semantics and patches the output to remove the TEMPORARY
-        qualifier that RAPT2 emits by default.
-        """
-        return sql_translator.translate(
-            root_list=[self.definition], use_bag_semantics=True
-        )[0].replace("TEMPORARY TABLE", "TABLE")
-
-    def gen_insert_table_create(self) -> str:
-        """Generate an empty tracking table that clones this table's schema."""
-        return (
-            f"CREATE TABLE {self.name}_INSERT AS SELECT * FROM {self.name} WHERE 1<>1;"
-        )
-
-    def gen_insert_join_table_create(self) -> str:
-        """Generate an empty JOIN staging table that clones this table's schema."""
-        return self.gen_insert_table_create().replace("INSERT", "INSERT_JOIN")
-
-    def gen_insert_function(self) -> str:
-        """Generate a PL/pgSQL trigger function that captures inserted rows.
-
-        The function copies each new row into the tracking table unless the
-        _loop table signals a cycle is in progress.
-        """
-        return "\n".join(
-            (
-                f"CREATE OR REPLACE FUNCTION {self.name}_INSERT_fn()",
-                "   RETURNS TRIGGER LANGUAGE PLPGSQL AS $$",
-                "   BEGIN",
-                f"   RAISE NOTICE 'Function {self.name}_INSERT_fn called';",
-                "   IF EXISTS (SELECT * FROM _loop where loop_start = -1) THEN",
-                "      RETURN NULL;",
-                "   ELSE",
-                f"      INSERT INTO {self.name}_INSERT VALUES({', '.join(f'new.{attr}' for attr in self.attributes)});",
-                "      RETURN NEW;",
-                "   END IF;",
-                "END;  $$",
-            )
-        )
-
-    def gen_insert_trigger(self) -> str:
-        """Generate an AFTER INSERT trigger that invokes the capture function."""
-        return "\n".join(
-            (
-                f"CREATE TRIGGER {self.name}_INSERT_trigger",
-                f"AFTER INSERT ON {self.name}",
-                "FOR EACH ROW",
-                f"EXECUTE FUNCTION {self.name}_INSERT_fn();",
-            )
-        )

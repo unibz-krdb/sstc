@@ -22,27 +22,6 @@ def test_context(example_1_ctx):
         ]
     }
 
-    person_source = source_ctx.tables[0]
-    assert (
-        person_source.gen_concrete_create_stmt()
-        == """
-CREATE TABLE person_source (
-    ssn VARCHAR(100),
-    empid VARCHAR(100),
-    name VARCHAR(100),
-    hdate VARCHAR(100),
-    phone VARCHAR(100),
-    email VARCHAR(100),
-    dept VARCHAR(100),
-    manager VARCHAR(100)
-)""".strip()
-    )
-
-    assert (
-        person_source.gen_universal_create_stmt()
-        == "CREATE TABLE person_source(ssn, empid, name, hdate, phone, email, dept, manager) AS SELECT universal.ssn, universal.empid, universal.name, universal.hdate, universal.phone, universal.email, universal.dept, universal.manager FROM universal"
-    )
-
 
 def test_context_direction(example_1_ctx):
     assert example_1_ctx.source.direction == "source"

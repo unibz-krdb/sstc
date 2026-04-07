@@ -24,12 +24,12 @@ uv run ruff format .                            # Format
 ### Core pipeline (`src/sstc/`)
 
 - **`context.py`** — `Context.from_file(universal_path, context_path)` parses relational algebra via `Rapt(grammar="Dependency Grammar")`, separating results into `AssignNode`s (table definitions), `DependencyNode`s (constraints), and a special `UniversalMapping` assignment. Builds `Table` instances and a RAPT2 `Schema`.
-- **`table.py`** — `Table` wraps an `AssignNode` with its associated dependency nodes. Generates SQL via `gen_concrete_create_stmt()` (typed columns from universal schema), `gen_universal_create_stmt()` (via RAPT2's `sql_translator.translate()`), and insert tracking infrastructure (`gen_insert_table_create`, `gen_insert_function`, `gen_insert_trigger`).
-- **`definition.py`** — `AttributeSchema` and `TableSchema` are `DataClassJsonMixin` dataclasses for JSON deserialization (used by `context.py` and `table.py`). Also defines `TargetDefinition`/`SourceDefinition` abstractions, but these are currently unused by the pipeline.
+- **`table.py`** — `Table` wraps an `AssignNode` with its associated dependency nodes and universal schema metadata. SQL generation is handled by `generator.py` using Jinja2 templates.
+- **`definition.py`** — `AttributeSchema` is a `DataClassJsonMixin` dataclass for JSON deserialization of the universal schema (used by `context.py` and `table.py`).
 - **`transducer_context.py`** — `TransducerContext` holds source and target `Context` instances, created via `from_files()`.
-- **`transducer.py`** — `Transducer` entry point; `compile()` is not yet implemented.
+- **`transducer.py`** — `Transducer` entry point; `compile()` delegates to `Generator`.
 - **`__init__.py`** — Public API exports: `Context`, `Transducer`, `TransducerContext`.
-- **`__main__.py`** — CLI entry point (stub — just prints "Hello, World!"). Mapped to `sstc` command via `pyproject.toml` scripts.
+- **`__main__.py`** — CLI entry point. Accepts universal schema, source, and target paths; outputs compiled SQL. Mapped to `sstc` command via `pyproject.toml` scripts.
 
 ### Key patterns
 
@@ -45,9 +45,9 @@ uv run ruff format .                            # Format
 ### Gotchas
 
 - Generated insert functions reference a `_loop` table (for cycle detection) — this table must exist in the target database
-- `gen_universal_create_stmt()` uses `use_bag_semantics=True` and `.replace("TEMPORARY TABLE", "TABLE")` — workaround because RAPT2's translator generates `CREATE TEMPORARY TABLE` by default
-- Tests use `test/fixtures.py` with direct import, not `conftest.py`
+- Tests use `conftest.py` for shared fixtures
 - Tests must be run from the project root (fixture paths are relative)
+- Golden-file tests in `test/test_golden.py` compare full `compile()` output against `test/golden/*.sql`; regenerate with `uv run pytest test/test_golden.py --update-golden`
 
 ## Input format
 

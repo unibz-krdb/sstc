@@ -6,6 +6,20 @@ from sstc import TransducerContext
 from sstc.generator import Generator
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--update-golden",
+        action="store_true",
+        default=False,
+        help="Regenerate golden files instead of comparing against them.",
+    )
+
+
+@pytest.fixture
+def update_golden(request):
+    return request.config.getoption("--update-golden")
+
+
 def _example_dir(name: str) -> str:
     path = os.path.join("test", "inputs", name)
     if not os.path.exists(path):
