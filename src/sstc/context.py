@@ -37,45 +37,31 @@ class Context:
         for table in tables:
             self.schema.add(table.name, table.attributes)
 
+    def _nodes_of_type(self, cls: type) -> list:
+        return [n for n in self.dependency_nodes if isinstance(n, cls)]
+
     @property
     def primary_keys(self) -> dict[str, list[str]]:
         return {
             node.relation_name: list(node.attributes)
-            for node in self.dependency_nodes
-            if isinstance(node, PrimaryKeyNode)
+            for node in self._nodes_of_type(PrimaryKeyNode)
         }
 
     @property
     def functional_dependencies(self) -> list[FunctionalDependencyNode]:
-        return [
-            node
-            for node in self.dependency_nodes
-            if isinstance(node, FunctionalDependencyNode)
-        ]
+        return self._nodes_of_type(FunctionalDependencyNode)
 
     @property
     def multivalued_dependencies(self) -> list[MultivaluedDependencyNode]:
-        return [
-            node
-            for node in self.dependency_nodes
-            if isinstance(node, MultivaluedDependencyNode)
-        ]
+        return self._nodes_of_type(MultivaluedDependencyNode)
 
     @property
     def inclusion_equivalences(self) -> list[InclusionEquivalenceNode]:
-        return [
-            node
-            for node in self.dependency_nodes
-            if isinstance(node, InclusionEquivalenceNode)
-        ]
+        return self._nodes_of_type(InclusionEquivalenceNode)
 
     @property
     def inclusion_subsumptions(self) -> list[InclusionSubsumptionNode]:
-        return [
-            node
-            for node in self.dependency_nodes
-            if isinstance(node, InclusionSubsumptionNode)
-        ]
+        return self._nodes_of_type(InclusionSubsumptionNode)
 
     @classmethod
     def from_file(
