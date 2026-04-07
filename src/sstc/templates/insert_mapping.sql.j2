@@ -34,6 +34,10 @@ BEGIN
 
 {% else %}
 {% for tbl in target_tables %}
+{% if tbl.guard_check %}
+    IF EXISTS (SELECT * FROM {{ schema }}._{{ source_tables[0] }}_{{ suffix }}_JOIN
+              WHERE {{ tbl.guard_check }}) THEN
+{% endif %}
     INSERT INTO {{ schema }}._{{ tbl.name }} (SELECT DISTINCT {{ tbl.attrs | join(', ') }}
         FROM {{ schema }}._{{ source_tables[0] }}_{{ suffix }}_JOIN
 {% for src in source_tables[1:] %}
@@ -41,6 +45,9 @@ BEGIN
 {% endfor %}
         WHERE {{ tbl.where_not_null }})
         ON CONFLICT{% if tbl.pk %} ({{ tbl.pk | join(', ') }}){% endif %} DO NOTHING;
+{% if tbl.guard_check %}
+    END IF;
+{% endif %}
 {% endfor %}
 {% endif %}
 

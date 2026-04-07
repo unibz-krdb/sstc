@@ -410,3 +410,22 @@ def test_inc_constraint_example2(example_2_dir: str):
 
     # BEFORE INSERT trigger
     assert "BEFORE INSERT" in result
+
+
+def test_conditional_inserts_example2(example_2_dir: str):
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join(example_2_dir, "universal.json"),
+        source_path=os.path.join(example_2_dir, "source.txt"),
+        target_path=os.path.join(example_2_dir, "target.txt"),
+    )
+    gen = Generator(ctx)
+    result = gen._mapping()
+
+    # Extract just the SOURCE_INSERT_FN section
+    source_fn_start = result.index("SOURCE_INSERT_FN")
+    source_fn_end = result.index("TARGET_INSERT_FN")
+    source_fn = result[source_fn_start:source_fn_end]
+
+    # Guarded tables should have IF EXISTS wrapping
+    assert "IF EXISTS" in source_fn
+    assert "empid IS NOT NULL AND hdate IS NOT NULL" in source_fn

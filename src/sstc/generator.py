@@ -546,6 +546,10 @@ class Generator:
                 "name": t.name,
                 "attrs": t.attributes,
                 "pk": target.primary_keys.get(t.name, []),
+                "guard_check": " AND ".join(
+                    f"{a} IS NOT NULL"
+                    for a in self._extract_table_guard_attrs(t)
+                ),
             }
             for t in target.tables
         ]
