@@ -165,3 +165,5 @@ cython_debug/
 .DS_Store
 # claude-squad local data
 .claude-squad/
+# serena local data
+.serena/
