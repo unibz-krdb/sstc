@@ -249,18 +249,30 @@ def build_null_pattern_where(hierarchy: GuardHierarchy) -> str:
     if not pattern_nullable:
         return " AND ".join(parts) if parts else "TRUE"
 
-    # Valid null-pattern branches (one per hierarchy level)
-    branches = []
+    # Columns in any guard set vary by level; the rest are always NOT NULL
+    all_guard_attrs: set[str] = set()
     for level in hierarchy.levels:
-        branch_parts = []
-        for col in pattern_nullable:
-            if col in level.not_null_cols:
-                branch_parts.append(f"{col} IS NOT NULL")
-            else:
-                branch_parts.append(f"{col} IS NULL")
-        branches.append("(" + " AND ".join(branch_parts) + ")")
+        all_guard_attrs |= level.guard_attrs
 
-    pattern_clause = "(" + " OR ".join(branches) + ")"
-    parts.append(pattern_clause)
+    non_guard = [c for c in pattern_nullable if c not in all_guard_attrs]
+    guard_cols = [c for c in pattern_nullable if c in all_guard_attrs]
+
+    if non_guard:
+        parts.extend(f"{c} IS NOT NULL" for c in non_guard)
+
+    # Valid null-pattern branches (one per hierarchy level)
+    if guard_cols:
+        branches = []
+        for level in hierarchy.levels:
+            branch_parts = []
+            for col in guard_cols:
+                if col in level.not_null_cols:
+                    branch_parts.append(f"{col} IS NOT NULL")
+                else:
+                    branch_parts.append(f"{col} IS NULL")
+            branches.append("(" + " AND ".join(branch_parts) + ")")
+
+        pattern_clause = "(" + " OR ".join(branches) + ")"
+        parts.append(pattern_clause)
 
     return " AND ".join(parts)

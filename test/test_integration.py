@@ -248,18 +248,9 @@ def test_multiple_persons_propagate(transducer_db):
 # of target table inserts that follow.  Each target insert's join function adds
 # -1 to _loop; when count reaches ABS(seed), TARGET_INSERT_FN fires and
 # reconstructs the universal tuple into _person_source.
-#
-# NOTE: These tests document expected behavior.  If they fail, the likely cause
-# is the null-pattern WHERE in TARGET_INSERT_FN filtering out valid tuples
-# (see build_null_pattern_where in guard.py — known discrepancy with the
-# hand-written reference SQL in docs/notes/example/).
 
 
-@pytest.mark.xfail(
-    reason="build_null_pattern_where requires unguarded attrs (name, phone, email) "
-    "to be NULL, but they are populated by target INSERT_JOIN tables",
-    strict=True,
-)
+
 def test_target_to_source_simple_person(transducer_db):
     """Insert a Level 0 person via target tables; verify _person_source populated."""
     # 3 target inserts → seed = 4
@@ -286,11 +277,6 @@ def test_target_to_source_simple_person(transducer_db):
     ).fetchall() == []
 
 
-@pytest.mark.xfail(
-    reason="build_null_pattern_where requires unguarded attrs (name, phone, email) "
-    "to be NULL, but they are populated by target INSERT_JOIN tables",
-    strict=True,
-)
 def test_target_to_source_employee(transducer_db):
     """Insert a Level 1 employee via target tables; verify _person_source populated."""
     # 5 target inserts → seed = 6
@@ -322,11 +308,6 @@ def test_target_to_source_employee(transducer_db):
     ).fetchall() == []
 
 
-@pytest.mark.xfail(
-    reason="build_null_pattern_where requires unguarded attrs (name, phone, email) "
-    "to be NULL, but they are populated by target INSERT_JOIN tables",
-    strict=True,
-)
 def test_target_to_source_full_employee(transducer_db):
     """Insert a Level 2 full employee via target tables; verify _person_source populated."""
     # 8 target inserts → seed = 9

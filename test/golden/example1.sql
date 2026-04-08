@@ -1692,7 +1692,7 @@ BEGIN
         NATURAL LEFT OUTER JOIN transducer._ped_INSERT_JOIN
         NATURAL LEFT OUTER JOIN transducer._peddept_INSERT_JOIN
         NATURAL LEFT OUTER JOIN transducer._deptmanager_INSERT_JOIN
-        WHERE ssn IS NOT NULL AND ((empid IS NULL AND name IS NULL AND hdate IS NULL AND phone IS NULL AND email IS NULL AND dept IS NULL AND manager IS NULL) OR (empid IS NOT NULL AND name IS NULL AND hdate IS NOT NULL AND phone IS NULL AND email IS NULL AND dept IS NULL AND manager IS NULL) OR (empid IS NOT NULL AND name IS NULL AND hdate IS NOT NULL AND phone IS NULL AND email IS NULL AND dept IS NOT NULL AND manager IS NOT NULL))
+        WHERE ssn IS NOT NULL AND name IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND ((empid IS NULL AND hdate IS NULL AND dept IS NULL AND manager IS NULL) OR (empid IS NOT NULL AND hdate IS NOT NULL AND dept IS NULL AND manager IS NULL) OR (empid IS NOT NULL AND hdate IS NOT NULL AND dept IS NOT NULL AND manager IS NOT NULL))
     );
 
     -- Tuple containment: keep only most informative tuples
@@ -1870,7 +1870,7 @@ BEGIN
         NATURAL LEFT OUTER JOIN transducer._ped_DELETE_JOIN
         NATURAL LEFT OUTER JOIN transducer._peddept_DELETE_JOIN
         NATURAL LEFT OUTER JOIN transducer._deptmanager_DELETE_JOIN
-        WHERE ssn IS NOT NULL AND ((empid IS NULL AND name IS NULL AND hdate IS NULL AND phone IS NULL AND email IS NULL AND dept IS NULL AND manager IS NULL) OR (empid IS NOT NULL AND name IS NULL AND hdate IS NOT NULL AND phone IS NULL AND email IS NULL AND dept IS NULL AND manager IS NULL) OR (empid IS NOT NULL AND name IS NULL AND hdate IS NOT NULL AND phone IS NULL AND email IS NULL AND dept IS NOT NULL AND manager IS NOT NULL))
+        WHERE ssn IS NOT NULL AND name IS NOT NULL AND phone IS NOT NULL AND email IS NOT NULL AND ((empid IS NULL AND hdate IS NULL AND dept IS NULL AND manager IS NULL) OR (empid IS NOT NULL AND hdate IS NOT NULL AND dept IS NULL AND manager IS NULL) OR (empid IS NOT NULL AND hdate IS NOT NULL AND dept IS NOT NULL AND manager IS NOT NULL))
     );
 
     DELETE FROM transducer._person_source WHERE (ssn) IN (SELECT ssn FROM temp_table_join);

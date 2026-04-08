@@ -454,7 +454,7 @@ def test_null_pattern_where_all_nullable_uses_source_pk():
 
 
 def test_null_pattern_where_single_level():
-    """Single level -> one-branch disjunction."""
+    """Single level, no guards -> non-guard nullable cols required NOT NULL."""
     h = GuardHierarchy(
         mandatory_cols=["pk"],
         nullable_cols=["x"],
@@ -462,7 +462,7 @@ def test_null_pattern_where_single_level():
         source_pk=["pk"],
     )
     result = build_null_pattern_where(h)
-    assert result == "pk IS NOT NULL AND ((x IS NULL))"
+    assert result == "pk IS NOT NULL AND x IS NOT NULL"
 
 
 # --- Unit tests for _build_cfd_where_branches ---
