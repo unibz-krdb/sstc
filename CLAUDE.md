@@ -23,9 +23,12 @@ uv run ruff format .                            # Format
 
 ### Core pipeline (`src/sstc/`)
 
-- **`context.py`** — `Context.from_file(universal_path, context_path)` parses relational algebra via `Rapt(grammar="Dependency Grammar")`, separating results into `AssignNode`s (table definitions), `DependencyNode`s (constraints), and a special `UniversalMapping` assignment. Builds `Table` instances and a RAPT2 `Schema`.
-- **`table.py`** — `Table` wraps an `AssignNode` with its associated dependency nodes and universal schema metadata. SQL generation is handled by `generator.py` using Jinja2 templates.
-- **`definition.py`** — `AttributeSchema` is a `DataClassJsonMixin` dataclass for JSON deserialization of the universal schema (used by `context.py` and `table.py`).
+- **`context.py`** — `Direction` StrEnum and `Context` class. `Context.from_file()` parses RA via RAPT2, separating results into `AssignNode`s, `DependencyNode`s, and `UniversalMapping`. Holds `universal_schema` (list of `AttributeSchema`) and `universal_mapping` at the context level.
+- **`table.py`** — `Table` wraps an `AssignNode` with its associated dependency nodes. Pure data model — no SQL generation.
+- **`definition.py`** — `AttributeSchema` dataclass for JSON deserialization of the universal schema.
+- **`guard.py`** — Guard hierarchy logic (leaf module). `GuardLevel`/`GuardHierarchy` dataclasses and pure functions: `build_guard_hierarchy`, `build_cfd_where_branches`, `build_containment_pruning`, `build_null_pattern_where`.
+- **`constraints.py`** — Constraint SQL generation. Functions accept a `render_fn` callback for template rendering: `foreign_keys`, `mvd_sql`, `fd_sql`, `inc_sql`, `constraints`.
+- **`generator.py`** — Orchestrates compilation via Jinja2 templates. Imports from `guard.py` and `constraints.py`. Re-exports `GuardHierarchy`, `GuardLevel`, `UnsupportedError` for backward compat.
 - **`transducer_context.py`** — `TransducerContext` holds source and target `Context` instances, created via `from_files()`.
 - **`transducer.py`** — `Transducer` entry point; `compile()` delegates to `Generator`.
 - **`__init__.py`** — Public API exports: `Context`, `Transducer`, `TransducerContext`.
@@ -34,6 +37,10 @@ uv run ruff format .                            # Format
 ### Key patterns
 
 - Factory class methods (`from_file`, `from_relations_and_dependencies`) create instances from parsed external data
+- `Direction` StrEnum (`Direction.SOURCE`, `Direction.TARGET`) — must use `enum.StrEnum`, not `str, enum.Enum` (the latter breaks Jinja2 template rendering in Python 3.11+)
+- Module dependency order: `guard.py` (leaf) ← `constraints.py` ← `generator.py` (orchestrator). No circular deps.
+- Constraint functions use a `RenderFn` callback to decouple template rendering from logic
+- `Generator.compile()` validates exactly 1 source table; raises `UnsupportedError` otherwise
 - RAPT2 node types: `AssignNode` (table definitions), `UnaryDependencyNode`/`BinaryDependencyNode` (constraints like PK, FD, INC, MVD)
 - Table names in input use plain names (e.g. `Person_Source`, `PersonPhone`); RAPT2 lowercases them
 - The reserved name `UniversalMapping` in relational algebra files defines the universal-to-context mapping
@@ -48,6 +55,7 @@ uv run ruff format .                            # Format
 - Tests use `conftest.py` for shared fixtures
 - Tests must be run from the project root (fixture paths are relative)
 - Golden-file tests in `test/test_golden.py` compare full `compile()` output against `test/golden/*.sql`; regenerate with `uv run pytest test/test_golden.py --update-golden`
+- `generator.py` re-exports `GuardHierarchy`, `GuardLevel`, `UnsupportedError` and provides staticmethod aliases for backward compat — tests import these from `generator`
 
 ## Input format
 
