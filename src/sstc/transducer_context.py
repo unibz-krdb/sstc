@@ -2,7 +2,7 @@
 
 from typing import Self
 
-from .context import Context
+from .context import Context, Direction
 
 
 class TransducerContext:
@@ -23,11 +23,11 @@ class TransducerContext:
         source_context = Context.from_file(
             universal_path=universal_path,
             context_path=source_path,
-            direction="source",
+            direction=Direction.SOURCE,
         )
         target_context = Context.from_file(
             universal_path=universal_path,
             context_path=target_path,
-            direction="target",
+            direction=Direction.TARGET,
         )
         return cls(source=source_context, target=target_context)

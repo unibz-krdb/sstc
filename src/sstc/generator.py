@@ -13,7 +13,7 @@ import jinja2
 from .constraints import UnsupportedError as UnsupportedError
 from .constraints import constraints, foreign_keys
 from .constraints import inc_sql as _inc_sql_impl
-from .context import Context
+from .context import Context, Direction
 from .guard import (
     GuardHierarchy as GuardHierarchy,
     GuardLevel as GuardLevel,
@@ -61,7 +61,7 @@ class Generator:
 
     @property
     def _universal_schema(self) -> list:
-        return self.ctx.source.tables[0].universal_schema
+        return self.ctx.source.universal_schema
 
     def _universal_columns(self) -> list[dict]:
         return [
@@ -78,6 +78,11 @@ class Generator:
         foreign keys, constraints, tracking, join staging, and mapping
         sections, separated by blank lines.
         """
+        if len(self.ctx.source.tables) != 1:
+            raise UnsupportedError(
+                f"Expected exactly 1 source table, got {len(self.ctx.source.tables)}. "
+                "Multi-source-table transducers are not yet supported."
+            )
         sections = [
             self._preamble(),
             self._base_tables(),
@@ -97,7 +102,7 @@ class Generator:
         return self._render("preamble.sql.j2")
 
     def _table_columns(self, table: Table) -> list[dict]:
-        schema_by_name = {a.name.lower(): a for a in table.universal_schema}
+        schema_by_name = {a.name.lower(): a for a in self._universal_schema}
         columns = []
         for attr_name in table.attributes:
             attr = schema_by_name.get(attr_name.lower())
@@ -170,7 +175,9 @@ class Generator:
             direction = context.direction
             # Source checks loop_start = -1, target checks loop_start = 1
             loop_check = (
-                SOURCE_LOOP_CHECK if direction == "source" else TARGET_LOOP_CHECK
+                SOURCE_LOOP_CHECK
+                if direction is Direction.SOURCE
+                else TARGET_LOOP_CHECK
             )
             for table in context.tables:
                 for suffix, event, row_prefix, return_val in [
@@ -225,7 +232,9 @@ class Generator:
             direction = context.direction
             # Source inserts +1 to loop, target inserts -1
             loop_value = (
-                SOURCE_LOOP_VALUE if direction == "source" else TARGET_LOOP_VALUE
+                SOURCE_LOOP_VALUE
+                if direction is Direction.SOURCE
+                else TARGET_LOOP_VALUE
             )
 
             all_tables_info = [

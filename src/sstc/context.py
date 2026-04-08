@@ -7,6 +7,7 @@ the special UniversalMapping assignment. The parsed artifacts are assembled
 into Table instances and exposed via a Context object.
 """
 
+import enum
 import json
 from typing import Self
 
@@ -27,6 +28,13 @@ from sstc.definition import AttributeSchema
 from .table import Table
 
 
+class Direction(enum.StrEnum):
+    """Direction of a context within a transducer."""
+
+    SOURCE = "source"
+    TARGET = "target"
+
+
 class Context:
     """Generic base class for source and target contexts."""
 
@@ -36,12 +44,16 @@ class Context:
     def __init__(
         self,
         tables: list[Table],
-        direction: str = "source",
+        direction: Direction = Direction.SOURCE,
         dependency_nodes: list[DependencyNode] | None = None,
+        universal_schema: list[AttributeSchema] | None = None,
+        universal_mapping: AssignNode | None = None,
     ):
         self.tables = tables
         self.direction = direction
         self.dependency_nodes = dependency_nodes or []
+        self.universal_schema = universal_schema or []
+        self.universal_mapping = universal_mapping
         self.schema = Schema()
         for table in tables:
             self.schema.add(table.name, table.attributes)
@@ -75,7 +87,10 @@ class Context:
 
     @classmethod
     def from_file(
-        cls, universal_path: str, context_path: str, direction: str = "source"
+        cls,
+        universal_path: str,
+        context_path: str,
+        direction: Direction = Direction.SOURCE,
     ) -> Self:
         """Parse a universal schema JSON and a relational algebra file into a Context.
 
@@ -120,8 +135,12 @@ class Context:
         tables = Table.from_relations_and_dependencies(
             definitions=relations,
             dependency_nodes=dependencies,
+        )
+
+        return cls(
+            tables=tables,
+            direction=direction,
+            dependency_nodes=dependencies,
             universal_schema=universal_attributes,
             universal_mapping=universal_mapping,
         )
-
-        return cls(tables=tables, direction=direction, dependency_nodes=dependencies)

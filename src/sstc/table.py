@@ -7,30 +7,22 @@ from rapt2.treebrd.node import (
     UnaryDependencyNode,
 )
 
-from .definition import AttributeSchema
-
 
 class Table:
-    """Generic base class for source and target tables."""
+    """Wraps an AssignNode with its associated dependency nodes."""
 
     definition: AssignNode
     dependency_nodes: list[DependencyNode]
-    universal_schema: list[AttributeSchema]
-    universal_mapping: AssignNode
 
     def __init__(
         self,
         node: AssignNode,
         dependency_nodes: list[DependencyNode],
-        universal_schema: list[AttributeSchema],
-        universal_mapping: AssignNode,
     ):
         if node.name is None:
             raise ValueError("Node must have a name")
         self.definition = node
         self.dependency_nodes = dependency_nodes
-        self.universal_schema = universal_schema
-        self.universal_mapping = universal_mapping
 
     @property
     def name(self) -> str:
@@ -47,8 +39,6 @@ class Table:
         cls,
         definitions: list[AssignNode],
         dependency_nodes: list[DependencyNode],
-        universal_schema: list[AttributeSchema],
-        universal_mapping: AssignNode,
     ) -> list[Self]:
         """Create tables from a list of relation nodes and dependency nodes."""
         tables: list[Self] = []
@@ -68,8 +58,6 @@ class Table:
                 cls(
                     node=definition,
                     dependency_nodes=dependencies,
-                    universal_schema=universal_schema,
-                    universal_mapping=universal_mapping,
                 )
             )
 

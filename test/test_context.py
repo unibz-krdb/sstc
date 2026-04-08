@@ -66,7 +66,7 @@ def test_example2_context_primary_keys(example_2_ctx):
 
 def test_example2_context_nullability(example_2_ctx):
     """Example2 mixed nullability: 4 mandatory, 4 nullable."""
-    schema = example_2_ctx.source.tables[0].universal_schema
+    schema = example_2_ctx.source.universal_schema
     mandatory = [a.name for a in schema if not a.is_nullable]
     nullable = [a.name for a in schema if a.is_nullable]
     assert set(mandatory) == {"ssn", "name", "phone", "email"}
