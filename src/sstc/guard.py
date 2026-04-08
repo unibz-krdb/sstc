@@ -99,11 +99,9 @@ def build_guard_hierarchy(
 
     # Build levels with cumulative not_null / null columns
     levels = []
+    cumulative: set[str] = set()
     for guard_frozen, tables in sorted_guards:
-        cumulative = set()
-        for g, _ in sorted_guards:
-            if g <= guard_frozen:
-                cumulative |= set(g)
+        cumulative |= set(guard_frozen)
 
         not_null = [c for c in nullable_cols if c in cumulative]
         null = [c for c in nullable_cols if c not in cumulative]

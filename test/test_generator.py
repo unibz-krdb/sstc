@@ -1,6 +1,12 @@
 import pytest
 
-from sstc.generator import Generator, GuardHierarchy, GuardLevel
+from sstc.guard import (
+    GuardHierarchy,
+    GuardLevel,
+    build_cfd_where_branches,
+    build_containment_pruning,
+    build_null_pattern_where,
+)
 
 
 def _extract_section(result: str, start_marker: str, end_marker: str) -> str:
@@ -378,7 +384,7 @@ def test_full_compile_example2(example_2_gen):
 def test_null_pattern_where_example1_requires_pk_not_null(example_1_gen):
     """Regression: all-nullable schema must require source PK NOT NULL in WHERE."""
     hierarchy = example_1_gen._build_guard_hierarchy()
-    where = example_1_gen._build_null_pattern_where(hierarchy)
+    where = build_null_pattern_where(hierarchy)
 
     # Source PK must always be NOT NULL
     assert where.startswith("ssn IS NOT NULL")
@@ -398,7 +404,7 @@ def test_null_pattern_where_all_mandatory():
         levels=[GuardLevel(guard_attrs=set(), not_null_cols=[], null_cols=[])],
         source_pk=["a"],
     )
-    result = Generator._build_null_pattern_where(h)
+    result = build_null_pattern_where(h)
     assert result == "a IS NOT NULL AND b IS NOT NULL"
 
 
@@ -419,7 +425,7 @@ def test_null_pattern_where_mixed():
         ],
         source_pk=["ssn"],
     )
-    result = Generator._build_null_pattern_where(h)
+    result = build_null_pattern_where(h)
     assert result.startswith("ssn IS NOT NULL AND name IS NOT NULL")
     assert "(empid IS NULL AND hdate IS NULL)" in result
     assert "(empid IS NOT NULL AND hdate IS NOT NULL)" in result
@@ -440,7 +446,7 @@ def test_null_pattern_where_all_nullable_uses_source_pk():
         ],
         source_pk=["pk1"],
     )
-    result = Generator._build_null_pattern_where(h)
+    result = build_null_pattern_where(h)
     assert result.startswith("pk1 IS NOT NULL")
     assert "pk1 IS NULL" not in result
     assert "(a IS NULL AND b IS NULL)" in result
@@ -455,7 +461,7 @@ def test_null_pattern_where_single_level():
         levels=[GuardLevel(guard_attrs=set(), not_null_cols=[], null_cols=["x"])],
         source_pk=["pk"],
     )
-    result = Generator._build_null_pattern_where(h)
+    result = build_null_pattern_where(h)
     assert result == "pk IS NOT NULL AND ((x IS NULL))"
 
 
@@ -479,7 +485,7 @@ def test_cfd_branches_simple_2attr_guard():
         ],
         source_pk=["ssn"],
     )
-    branches = Generator._build_cfd_where_branches(
+    branches = build_cfd_where_branches(
         lhs_attrs=["empid"],
         rhs_attrs=["hdate"],
         guard_attrs=["empid", "hdate"],
@@ -519,7 +525,7 @@ def test_cfd_branches_complex_4attr_guard():
         ],
         source_pk=["ssn"],
     )
-    branches = Generator._build_cfd_where_branches(
+    branches = build_cfd_where_branches(
         lhs_attrs=["empid"],
         rhs_attrs=["dept"],
         guard_attrs=["empid", "hdate", "dept", "manager"],
@@ -552,7 +558,7 @@ def test_cfd_branches_no_duplicates():
         ],
         source_pk=["pk"],
     )
-    branches = Generator._build_cfd_where_branches(
+    branches = build_cfd_where_branches(
         lhs_attrs=["a"], rhs_attrs=["b"], guard_attrs=["a", "b"], hierarchy=h
     )
     assert len(branches) == len(set(branches))
@@ -564,7 +570,7 @@ def test_cfd_branches_no_duplicates():
 def test_containment_pruning_multi_level(example_1_gen):
     """3 levels -> 2 pruning rules, identity uses source_pk."""
     hierarchy = example_1_gen._build_guard_hierarchy()
-    rules = Generator._build_containment_pruning(hierarchy)
+    rules = build_containment_pruning(hierarchy)
 
     assert len(rules) == 2
     assert "t_rich.empid IS NOT NULL" in rules[0]["richer_condition"]
@@ -582,7 +588,7 @@ def test_containment_pruning_single_level():
         levels=[GuardLevel(guard_attrs=set(), not_null_cols=[], null_cols=["x"])],
         source_pk=["pk"],
     )
-    assert Generator._build_containment_pruning(h) == []
+    assert build_containment_pruning(h) == []
 
 
 def test_containment_pruning_no_nullable():
@@ -596,13 +602,13 @@ def test_containment_pruning_no_nullable():
         ],
         source_pk=["a"],
     )
-    assert Generator._build_containment_pruning(h) == []
+    assert build_containment_pruning(h) == []
 
 
 def test_containment_pruning_identity_uses_mandatory(example_2_gen):
     """When mandatory_cols is non-empty, identity_match uses mandatory_cols."""
     hierarchy = example_2_gen._build_guard_hierarchy()
-    rules = Generator._build_containment_pruning(hierarchy)
+    rules = build_containment_pruning(hierarchy)
 
     assert len(rules) == 2
     for rule in rules:

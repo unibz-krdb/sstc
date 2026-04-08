@@ -15,9 +15,7 @@ from .constraints import constraints, foreign_keys
 from .constraints import inc_sql as _inc_sql_impl
 from .context import Context, Direction
 from .guard import (
-    GuardHierarchy as GuardHierarchy,
-    GuardLevel as GuardLevel,
-    build_cfd_where_branches,
+    GuardHierarchy,
     build_containment_pruning,
     build_guard_hierarchy,
     build_null_pattern_where,
@@ -42,11 +40,6 @@ class Generator:
     natural-join staging, and four bidirectional mapping functions
     (source/target x insert/delete) with their triggers.
     """
-
-    # Backward-compat aliases for tests calling Generator._build_* as static methods
-    _build_null_pattern_where = staticmethod(build_null_pattern_where)
-    _build_cfd_where_branches = staticmethod(build_cfd_where_branches)
-    _build_containment_pruning = staticmethod(build_containment_pruning)
 
     def __init__(self, ctx: TransducerContext, schema: str = "transducer"):
         self.ctx = ctx

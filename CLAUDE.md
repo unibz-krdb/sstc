@@ -28,7 +28,7 @@ uv run ruff format .                            # Format
 - **`definition.py`** — `AttributeSchema` dataclass for JSON deserialization of the universal schema.
 - **`guard.py`** — Guard hierarchy logic (leaf module). `GuardLevel`/`GuardHierarchy` dataclasses and pure functions: `build_guard_hierarchy`, `build_cfd_where_branches`, `build_containment_pruning`, `build_null_pattern_where`.
 - **`constraints.py`** — Constraint SQL generation. Functions accept a `render_fn` callback for template rendering: `foreign_keys`, `mvd_sql`, `fd_sql`, `inc_sql`, `constraints`.
-- **`generator.py`** — Orchestrates compilation via Jinja2 templates. Imports from `guard.py` and `constraints.py`. Re-exports `GuardHierarchy`, `GuardLevel`, `UnsupportedError` for backward compat.
+- **`generator.py`** — Orchestrates compilation via Jinja2 templates. Imports from `guard.py` and `constraints.py`.
 - **`transducer_context.py`** — `TransducerContext` holds source and target `Context` instances, created via `from_files()`.
 - **`transducer.py`** — `Transducer` entry point; `compile()` delegates to `Generator`.
 - **`__init__.py`** — Public API exports: `Context`, `Transducer`, `TransducerContext`.
@@ -55,7 +55,7 @@ uv run ruff format .                            # Format
 - Tests use `conftest.py` for shared fixtures
 - Tests must be run from the project root (fixture paths are relative)
 - Golden-file tests in `test/test_golden.py` compare full `compile()` output against `test/golden/*.sql`; regenerate with `uv run pytest test/test_golden.py --update-golden`
-- `generator.py` re-exports `GuardHierarchy`, `GuardLevel`, `UnsupportedError` and provides staticmethod aliases for backward compat — tests import these from `generator`
+- Tests import `GuardHierarchy`, `GuardLevel`, and guard functions directly from `sstc.guard` — not via `generator`
 
 ## Input format
 

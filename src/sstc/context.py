@@ -8,6 +8,7 @@ into Table instances and exposed via a Context object.
 """
 
 import enum
+import functools
 import json
 from typing import Self
 
@@ -62,26 +63,26 @@ class Context:
         """Filter dependency nodes to those matching the given type."""
         return [n for n in self.dependency_nodes if isinstance(n, cls)]
 
-    @property
+    @functools.cached_property
     def primary_keys(self) -> dict[str, list[str]]:
         return {
             node.relation_name: list(node.attributes)
             for node in self._nodes_of_type(PrimaryKeyNode)
         }
 
-    @property
+    @functools.cached_property
     def functional_dependencies(self) -> list[FunctionalDependencyNode]:
         return self._nodes_of_type(FunctionalDependencyNode)
 
-    @property
+    @functools.cached_property
     def multivalued_dependencies(self) -> list[MultivaluedDependencyNode]:
         return self._nodes_of_type(MultivaluedDependencyNode)
 
-    @property
+    @functools.cached_property
     def inclusion_equivalences(self) -> list[InclusionEquivalenceNode]:
         return self._nodes_of_type(InclusionEquivalenceNode)
 
-    @property
+    @functools.cached_property
     def inclusion_subsumptions(self) -> list[InclusionSubsumptionNode]:
         return self._nodes_of_type(InclusionSubsumptionNode)
 
