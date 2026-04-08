@@ -240,3 +240,130 @@ def test_multiple_persons_propagate(transducer_db):
     assert transducer_db.execute(
         "SELECT * FROM transducer._loop"
     ).fetchall() == []
+
+
+# --- Target-to-source propagation (Phase C) ---
+#
+# Protocol: INSERT a seed into _loop with value = 1 + N where N is the number
+# of target table inserts that follow.  Each target insert's join function adds
+# -1 to _loop; when count reaches ABS(seed), TARGET_INSERT_FN fires and
+# reconstructs the universal tuple into _person_source.
+#
+# NOTE: These tests document expected behavior.  If they fail, the likely cause
+# is the null-pattern WHERE in TARGET_INSERT_FN filtering out valid tuples
+# (see build_null_pattern_where in guard.py — known discrepancy with the
+# hand-written reference SQL in docs/notes/example/).
+
+
+@pytest.mark.xfail(
+    reason="build_null_pattern_where requires unguarded attrs (name, phone, email) "
+    "to be NULL, but they are populated by target INSERT_JOIN tables",
+    strict=True,
+)
+def test_target_to_source_simple_person(transducer_db):
+    """Insert a Level 0 person via target tables; verify _person_source populated."""
+    # 3 target inserts → seed = 4
+    transducer_db.execute("INSERT INTO transducer._loop VALUES (4)")
+    transducer_db.execute(
+        "INSERT INTO transducer._person VALUES ('T1', 'Dana')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._personphone VALUES ('T1', 'TP1')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._personemail VALUES ('T1', 'TE1')"
+    )
+
+    source = transducer_db.execute(
+        "SELECT * FROM transducer._person_source"
+    ).fetchall()
+    assert len(source) == 1, f"Expected 1 row in _person_source, got {len(source)}"
+    assert source[0] == ("T1", None, "Dana", None, "TP1", "TE1", None, None)
+
+    # Tracking cleaned up
+    assert transducer_db.execute(
+        "SELECT * FROM transducer._loop"
+    ).fetchall() == []
+
+
+@pytest.mark.xfail(
+    reason="build_null_pattern_where requires unguarded attrs (name, phone, email) "
+    "to be NULL, but they are populated by target INSERT_JOIN tables",
+    strict=True,
+)
+def test_target_to_source_employee(transducer_db):
+    """Insert a Level 1 employee via target tables; verify _person_source populated."""
+    # 5 target inserts → seed = 6
+    transducer_db.execute("INSERT INTO transducer._loop VALUES (6)")
+    transducer_db.execute(
+        "INSERT INTO transducer._person VALUES ('T2', 'Eve')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._employee VALUES ('T2', 'TEMP2')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._employeedate VALUES ('TEMP2', 'TH2')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._personphone VALUES ('T2', 'TP2')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._personemail VALUES ('T2', 'TE2')"
+    )
+
+    source = transducer_db.execute(
+        "SELECT * FROM transducer._person_source"
+    ).fetchall()
+    assert len(source) == 1, f"Expected 1 row in _person_source, got {len(source)}"
+    assert source[0] == ("T2", "TEMP2", "Eve", "TH2", "TP2", "TE2", None, None)
+
+    assert transducer_db.execute(
+        "SELECT * FROM transducer._loop"
+    ).fetchall() == []
+
+
+@pytest.mark.xfail(
+    reason="build_null_pattern_where requires unguarded attrs (name, phone, email) "
+    "to be NULL, but they are populated by target INSERT_JOIN tables",
+    strict=True,
+)
+def test_target_to_source_full_employee(transducer_db):
+    """Insert a Level 2 full employee via target tables; verify _person_source populated."""
+    # 8 target inserts → seed = 9
+    transducer_db.execute("INSERT INTO transducer._loop VALUES (9)")
+    transducer_db.execute(
+        "INSERT INTO transducer._person VALUES ('T3', 'Finn')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._employee VALUES ('T3', 'TEMP3')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._employeedate VALUES ('TEMP3', 'TH3')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._ped VALUES ('T3', 'TEMP3')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._deptmanager VALUES ('TD3', 'TEMP3')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._peddept VALUES ('TEMP3', 'TD3')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._personphone VALUES ('T3', 'TP3')"
+    )
+    transducer_db.execute(
+        "INSERT INTO transducer._personemail VALUES ('T3', 'TE3')"
+    )
+
+    source = transducer_db.execute(
+        "SELECT * FROM transducer._person_source"
+    ).fetchall()
+    assert len(source) == 1, f"Expected 1 row in _person_source, got {len(source)}"
+    assert source[0] == (
+        "T3", "TEMP3", "Finn", "TH3", "TP3", "TE3", "TD3", "TEMP3"
+    )
+
+    assert transducer_db.execute(
+        "SELECT * FROM transducer._loop"
+    ).fetchall() == []
