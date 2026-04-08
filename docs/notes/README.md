@@ -11,4 +11,4 @@ See also: [papers/](../papers/) for the academic paper.
 - [sql-generation/](sql-generation/) — Patterns for generating tables, trigger chains, and mapping functions
 - [open-problems.md](open-problems.md) — Unsolved issues and areas needing further work
 
-- [example/](example/) — The PERSON URA running example (NULLs, CFDs, horizontal decomposition). Authoritative reference SQL for the transducer architecture, referenced throughout these docs
+- [example/](example/) — The PERSON URA running example (NULLs, CFDs, horizontal decomposition). Authoritative reference SQL for the transducer architecture, referenced throughout these docs. Includes a [pipeline walkthrough](example/pipeline-walkthrough.md) tracing compilation from input to output
