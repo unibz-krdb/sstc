@@ -1,5 +1,6 @@
 """Integration tests: compile example1, install on Postgres, verify propagation."""
 
+import psycopg.errors
 import pytest
 
 pytestmark = pytest.mark.integration
@@ -240,6 +241,131 @@ def test_multiple_persons_propagate(transducer_db):
     assert transducer_db.execute(
         "SELECT * FROM transducer._loop"
     ).fetchall() == []
+
+
+# --- Constraint enforcement (Phase D) ---
+
+
+def test_cfd_empid_hdate_violation(transducer_db):
+    """CFD empid→hdate: empid non-null with hdate null rejected (guard incoherence).
+
+    NOTE: CFD triggers compare NEW against existing rows via cross join, so they
+    require at least one row in _person_source to fire.  The guard hierarchy still
+    prevents incorrect propagation for the very first insert.
+    """
+    transducer_db.execute(
+        """
+        INSERT INTO transducer._person_source
+            (ssn, empid, name, hdate, phone, email, dept, manager)
+        VALUES ('V0', NULL, 'Seed', NULL, 'P0', 'E0', NULL, NULL)
+        """
+    )
+    with pytest.raises(
+        psycopg.errors.RaiseException, match="CFD violation.*empid -> hdate"
+    ):
+        transducer_db.execute(
+            """
+            INSERT INTO transducer._person_source
+                (ssn, empid, name, hdate, phone, email, dept, manager)
+            VALUES ('V1', 'EMP_V1', 'Vicky', NULL, 'PV1', 'EV1', NULL, NULL)
+            """
+        )
+
+
+def test_cfd_empid_dept_cross_level_violation(transducer_db):
+    """CFD empid→dept: dept non-null without empid rejected (cross-level coherence)."""
+    transducer_db.execute(
+        """
+        INSERT INTO transducer._person_source
+            (ssn, empid, name, hdate, phone, email, dept, manager)
+        VALUES ('V0', NULL, 'Seed', NULL, 'P0', 'E0', NULL, NULL)
+        """
+    )
+    with pytest.raises(
+        psycopg.errors.RaiseException, match="CFD violation.*empid -> dept"
+    ):
+        transducer_db.execute(
+            """
+            INSERT INTO transducer._person_source
+                (ssn, empid, name, hdate, phone, email, dept, manager)
+            VALUES ('V2', NULL, 'Wade', NULL, 'PV2', 'EV2', 'DV2', NULL)
+            """
+        )
+
+
+def test_cfd_dept_manager_violation(transducer_db):
+    """CFD dept→manager: same dept with different managers rejected (FD conflict)."""
+    # First employee: self-managing, dept=DEPTX
+    transducer_db.execute(
+        """
+        INSERT INTO transducer._person_source
+            (ssn, empid, name, hdate, phone, email, dept, manager)
+        VALUES ('VA', 'EMPA', 'Amy', 'HA', 'PA', 'EA', 'DEPTX', 'EMPA')
+        """
+    )
+    # Second employee: no dept (needed so EMPB exists as empid for INC)
+    transducer_db.execute(
+        """
+        INSERT INTO transducer._person_source
+            (ssn, empid, name, hdate, phone, email, dept, manager)
+        VALUES ('VB', 'EMPB', 'Ben', 'HB', 'PB', 'EB', NULL, NULL)
+        """
+    )
+    # Third: same dept=DEPTX but manager=EMPB (conflicts with EMPA for DEPTX)
+    with pytest.raises(
+        psycopg.errors.RaiseException, match="CFD violation.*dept -> manager"
+    ):
+        transducer_db.execute(
+            """
+            INSERT INTO transducer._person_source
+                (ssn, empid, name, hdate, phone, email, dept, manager)
+            VALUES ('VC', 'EMPC', 'Cal', 'HC', 'PC', 'EC', 'DEPTX', 'EMPB')
+            """
+        )
+
+
+def test_inc_violation(transducer_db):
+    """INC manager⊆empid: manager referencing non-existent empid rejected."""
+    # Need at least one existing row so the INC SELECT returns something
+    transducer_db.execute(
+        """
+        INSERT INTO transducer._person_source
+            (ssn, empid, name, hdate, phone, email, dept, manager)
+        VALUES ('VA', NULL, 'Amy', NULL, 'PA', 'EA', NULL, NULL)
+        """
+    )
+    with pytest.raises(
+        psycopg.errors.RaiseException, match="INC violation"
+    ):
+        transducer_db.execute(
+            """
+            INSERT INTO transducer._person_source
+                (ssn, empid, name, hdate, phone, email, dept, manager)
+            VALUES ('VB', 'EMPB', 'Ben', 'HB', 'PB', 'EB', 'DB', 'GHOST')
+            """
+        )
+
+
+def test_mvd_violation(transducer_db):
+    """MVD {ssn}→→{phone}: inconsistent non-MVD attrs for same ssn rejected."""
+    transducer_db.execute(
+        """
+        INSERT INTO transducer._person_source
+            (ssn, empid, name, hdate, phone, email, dept, manager)
+        VALUES ('VM', NULL, 'Mary', NULL, 'PM1', 'EM1', NULL, NULL)
+        """
+    )
+    # Same ssn, different name → cross-product tuple doesn't exist → violation
+    with pytest.raises(
+        psycopg.errors.RaiseException, match="MVD constraint violation"
+    ):
+        transducer_db.execute(
+            """
+            INSERT INTO transducer._person_source
+                (ssn, empid, name, hdate, phone, email, dept, manager)
+            VALUES ('VM', NULL, 'Nora', NULL, 'PM2', 'EM2', NULL, NULL)
+            """
+        )
 
 
 # --- Target-to-source propagation (Phase C) ---
