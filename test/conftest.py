@@ -63,3 +63,42 @@ def example_1_gen(example_1_ctx):
 @pytest.fixture
 def example_2_gen(example_2_ctx):
     return Generator(example_2_ctx)
+
+
+# ---------------------------------------------------------------------------
+# Integration test fixtures (require testcontainers + psycopg)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def pg_container():
+    pytest.importorskip("testcontainers", reason="testcontainers not installed")
+    from testcontainers.postgres import PostgresContainer
+
+    with PostgresContainer("postgres:17", driver=None) as pg:
+        yield pg
+
+
+@pytest.fixture
+def pg_conn(pg_container):
+    import psycopg
+
+    conn = psycopg.connect(pg_container.get_connection_url(), autocommit=True)
+    yield conn
+    conn.close()
+
+
+@pytest.fixture(scope="session")
+def example1_sql():
+    ctx = TransducerContext.from_files(
+        universal_path=os.path.join("test", "inputs", "example1", "universal.json"),
+        source_path=os.path.join("test", "inputs", "example1", "source.txt"),
+        target_path=os.path.join("test", "inputs", "example1", "target.txt"),
+    )
+    return Generator(ctx).compile()
+
+
+@pytest.fixture
+def transducer_db(pg_conn, example1_sql):
+    pg_conn.execute(example1_sql)
+    return pg_conn

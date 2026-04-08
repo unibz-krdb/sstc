@@ -25,7 +25,9 @@ classifiers = [
 dev = [
     "debugpy>=1.8.16",
     "ruff>=0.12.12",
-    "pytest>=8.4.2"
+    "pytest>=8.4.2",
+    "testcontainers[postgres]>=4.9",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.scripts]
@@ -36,6 +38,11 @@ Repository = "https://github.com/unibz-krdb/sstc"
 
 [tool.uv.sources]
 rapt2 = { path = "../rapt2", editable = true }
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires Docker + PostgreSQL (testcontainers)",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "test/*.py" = ["F811"]
